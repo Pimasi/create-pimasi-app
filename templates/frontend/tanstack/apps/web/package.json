@@ -1,0 +1,33 @@
+{
+    "name": "pimasi-web",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "gen:routes": "node scripts/gen-routes.mjs",
+        "type-check": "npm run gen:routes && tsc --noEmit"
+    },
+    "dependencies": {
+        "@pimasi/lib": "^0.1.0",
+        "@pimasi/utils": "^1.1.0",
+        "@tanstack/react-router": "^1.170.17",
+        "firebase": "^12.15.0",
+        "react": "^19.2.7",
+        "react-dom": "^19.2.7",
+        "sonner": "^2.0.7",
+        "swr": "^2.4.2"
+    },
+    "devDependencies": {
+        "@tailwindcss/vite": "^4.3.2",
+        "@tanstack/router-generator": "^1.167.18",
+        "@tanstack/router-plugin": "^1.168.19",
+        "@types/react": "^19.2.17",
+        "@types/react-dom": "^19.2.3",
+        "@vitejs/plugin-react": "^6.0.3",
+        "tailwindcss": "^4.3.2",
+        "typescript": "^7.0.2",
+        "vite": "^8.1.4"
+    }
+}

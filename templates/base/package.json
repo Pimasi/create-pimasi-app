@@ -1,0 +1,26 @@
+{
+    "name": "__APP_SLUG__",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "build": "turbo run build",
+        "type-check": "turbo run type-check",
+        "cordova:build": "turbo run build:cordova --filter=pimasi-web",
+        "prepare": "husky"
+    },
+    "devDependencies": {
+        "husky": "^9.1.7",
+        "lint-staged": "^17.0.8",
+        "prettier": "^3.9.4",
+        "turbo": "2.10.4"
+    },
+    "lint-staged": {
+        "*.{js,jsx,ts,tsx,mjs,cjs,json,md,css,scss,yml,yaml}": "prettier --write"
+    },
+    "workspaces": [
+        "apps/web",
+        "apps/server",
+        "apps/shared/lib"
+    ],
+    "packageManager": "npm@11.12.1"
+}

@@ -1,0 +1,2 @@
+# templates are copied verbatim by the CLI; prettier mangles __APP_SLUG__ in markdown
+templates/

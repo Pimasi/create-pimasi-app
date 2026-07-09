@@ -1,0 +1,33 @@
+{
+    "references": [
+        {
+            "path": "../shared/lib"
+        }
+    ],
+    "compilerOptions": {
+        "moduleResolution": "nodenext",
+        "resolveJsonModule": true,
+        "types": ["node"], // TS 6.0 changed the `types` default to [] (was: all @types/*)
+        "paths": {
+            "@pimasi/lib": ["../shared/lib/src/index.ts"],
+            "@pimasi/lib/*": ["../shared/lib/src/*"]
+        },
+        "preserveSymlinks": true,
+        "isolatedModules": true,
+        "esModuleInterop": true,
+        "removeComments": false,
+        "declarationMap": true,
+        "noImplicitAny": false,
+        "module": "nodenext",
+        "skipLibCheck": true,
+        "incremental": true,
+        "declaration": true,
+        "composite": true, // needed for monorepo references
+        "target": "esnext",
+        "sourceMap": true,
+        "outDir": "dist",
+        "pretty": true,
+        "strict": true
+    },
+    "exclude": ["node_modules", "dist"]
+}

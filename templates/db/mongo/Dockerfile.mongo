@@ -1,0 +1,7 @@
+ARG MONGO_VERSION
+FROM mongo:${MONGO_VERSION:-8}
+
+COPY ./mongo/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

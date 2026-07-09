@@ -1,0 +1,52 @@
+import { $logger } from "./utils/logger";
+import { REQUEST_LOGGER_MIDDLEWARE } from "./middleware/log-request";
+import { REQUEST_ID_MIDDLEWARE } from "./middleware/request-id";
+import { AppServer } from "./app/http-server";
+import { $session } from "./app/session.service";
+import { $env } from "./utils/env";
+import { ERROR_HANDLER_MIDDLEWARE } from "./middleware/error-handler";
+import { PARSE_SESSION_MIDDLEWARE } from "./handlers/auth/parse-session.middleware";
+import { QueueMonitor } from "./app/queues";
+import { runMigrations } from "./migrations";
+import { resolve } from "node:path";
+import { createServer } from "node:http";
+import cors from "cors";
+import { RequestHandler } from "express";
+
+$session.run({}, async () => {
+    await runMigrations();
+
+    let isProduction = $env.NODE_ENV === "production";
+
+    let preRouteMiddleware: (RequestHandler | [string, RequestHandler])[] = [
+        cors({ origin: true, credentials: true }),
+        REQUEST_ID_MIDDLEWARE,
+        REQUEST_LOGGER_MIDDLEWARE,
+        PARSE_SESSION_MIDDLEWARE,
+    ];
+
+    if (!isProduction) {
+        let { adapter } = await QueueMonitor();
+        preRouteMiddleware.push(["/bull", adapter.getRouter()]);
+    }
+
+    let app = await AppServer({
+        swagger: {
+            securityType: "bearer",
+            enabled: !isProduction,
+            info: {
+                title: "Pimasi Starter API",
+            },
+        },
+        preRouteMiddleware,
+        routes: resolve(__dirname, "./**/*.route.{ts,js}"),
+        postRouteMiddleware: [ERROR_HANDLER_MIDDLEWARE],
+    });
+
+    let server = createServer(app);
+
+    server.listen($env.PORT, () => {
+        $logger.debug(`Debug mode enabled`);
+        $logger.info(`Server listening on port: ${$env.PORT}`);
+    });
+});

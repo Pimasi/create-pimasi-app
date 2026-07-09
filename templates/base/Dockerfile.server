@@ -1,0 +1,23 @@
+FROM node:lts-slim AS dev
+RUN apt-get update && apt-get install -y curl wget
+RUN npm i -g pm2 tsx
+
+WORKDIR /app
+COPY package*.json ./
+COPY apps/shared/lib/package.json apps/shared/lib/
+COPY apps/server/package.json apps/server/
+RUN npm ci
+COPY apps/shared/lib/ apps/shared/lib/
+COPY apps/server/ apps/server/
+
+WORKDIR /app/apps/server
+RUN npm run build:clean
+RUN chmod +x ./src/cli.ts
+RUN npm i -g
+
+# --- Production: shed the dev toolchain (typescript, vitest, tsx, @types)
+FROM dev AS prod
+ENV NODE_ENV=production
+WORKDIR /app
+RUN npm prune --omit=dev
+WORKDIR /app/apps/server

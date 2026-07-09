@@ -1,0 +1,40 @@
+{
+    "name": "create-pimasi-app",
+    "version": "0.1.0",
+    "description": "create-next-app-style scaffolder for full-stack PIMASI TypeScript monorepos",
+    "type": "module",
+    "bin": {
+        "create-pimasi-app": "dist/index.js"
+    },
+    "files": [
+        "dist",
+        "templates",
+        "DESIGN.md"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/pimasi/create-pimasi-app.git"
+    },
+    "homepage": "https://github.com/pimasi/create-pimasi-app#readme",
+    "bugs": {
+        "url": "https://github.com/pimasi/create-pimasi-app/issues"
+    },
+    "license": "Apache-2.0",
+    "scripts": {
+        "build": "tsc",
+        "dev": "tsx src/index.ts",
+        "start": "node dist/index.js"
+    },
+    "engines": {
+        "node": ">=20"
+    },
+    "dependencies": {
+        "@clack/prompts": "^0.9.1",
+        "picocolors": "^1.1.1"
+    },
+    "devDependencies": {
+        "@types/node": "^22.13.0",
+        "tsx": "^4.19.2",
+        "typescript": "^5.7.3"
+    }
+}

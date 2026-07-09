@@ -1,0 +1,5 @@
+{
+    "scripts": {
+        "build:cordova": "set -a && . ./.env.cordova && set +a && CORDOVA_BUILD=1 next build && rm -rf cordova/www && mkdir -p cordova/www && cp -r out/. cordova/www/"
+    }
+}

@@ -1,0 +1,16 @@
+{
+    "name": "__APP_SLUG__-cordova",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Cordova shell that packages the pimasi-web static export (apps/web) as Android/iOS apps",
+    "devDependencies": {
+        "cordova": "^13.0.0",
+        "cordova-android": "^15.0.0",
+        "cordova-ios": "^8.1.1"
+    },
+    "cordova": {
+        "platforms": [
+            "android"
+        ]
+    }
+}

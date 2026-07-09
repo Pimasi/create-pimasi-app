@@ -1,0 +1,5 @@
+{
+    "scripts": {
+        "build:cordova": "vite build --mode cordova && rm -rf cordova/www && mkdir -p cordova/www && cp -r dist/. cordova/www/"
+    }
+}

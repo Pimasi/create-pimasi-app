@@ -1,0 +1,27 @@
+# --- Development target ---
+FROM node:lts-slim AS dev
+WORKDIR /app
+COPY package*.json ./
+COPY apps/shared/lib/package.json apps/shared/lib/
+COPY apps/web/package.json apps/web/
+RUN npm ci
+COPY apps/shared/lib/ apps/shared/lib/
+COPY apps/web/ apps/web/
+
+# --- Production build ---
+FROM dev AS build
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_PUBLIC_WEB_URL
+ARG NEXT_PUBLIC_FIREBASE_API_KEY
+ARG NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+ARG NEXT_PUBLIC_FIREBASE_PROJECT_ID
+ARG NEXT_PUBLIC_FIREBASE_APP_ID
+ENV NODE_ENV=production
+RUN npm --workspace pimasi-web run build
+
+# --- Production serve ---
+FROM build AS prod
+ENV NODE_ENV=production
+WORKDIR /app/apps/web
+EXPOSE 3000
+CMD ["npm", "run", "start"]

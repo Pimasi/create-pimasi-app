@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.next/
+.dumps/
+# tanstack router codegen
+**/__generated__/
+**/routeTree.gen.ts

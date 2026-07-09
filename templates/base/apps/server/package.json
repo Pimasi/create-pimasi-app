@@ -1,0 +1,44 @@
+{
+    "name": "pimasi-server",
+    "version": "1.0.0",
+    "author": "Pimasi LTD",
+    "license": "ISC",
+    "scripts": {
+        "pm2": "pm2-runtime start process.config.js",
+        "build": "tsc -b tsconfig.build.json",
+        "type-check": "tsc -b tsconfig.build.json",
+        "build:clean": "tsc -b tsconfig.build.json --clean && npm run build",
+        "build:watch": "npm run build -- --watch",
+        "watch": "node --watch-path=./src --import tsx",
+        "dev:backend": "npm run watch -- src/backend.ts",
+        "dev:workers": "npm run watch -- src/workers.ts",
+        "start": "npm run pm2",
+        "dev": "npm run pm2",
+        "test": "vitest run"
+    },
+    "bin": {
+        "run": "./src/cli.ts"
+    },
+    "dependencies": {
+        "@pimasi/lib": "^0.1.0",
+        "@bull-board/express": "^8.1.2",
+        "@pimasi/utils": "^1.1.0",
+        "@sendgrid/mail": "^8.1.6",
+        "@types/cors": "^2.8.19",
+        "@types/lodash": "^4.17.24",
+        "@types/node": "^26.1.1",
+        "@types/yargs": "^17.0.35",
+        "bullmq": "^5.79.3",
+        "cors": "^2.8.6",
+        "express": "^5.2.1",
+        "firebase-admin": "^14.1.0",
+        "jsonwebtoken": "^9.0.3",
+        "lodash": "^4.18.1",
+        "redis": "^6.1.0",
+        "tsx": "^4.23.0",
+        "typescript": "^7.0.2",
+        "ulid": "^3.0.2",
+        "vitest": "^4.1.10",
+        "yargs": "^17.7.3"
+    }
+}
