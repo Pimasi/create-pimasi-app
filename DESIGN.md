@@ -70,7 +70,7 @@ shadcn/ui v4 standard names: `background`, `foreground`, `card`, `card-foregroun
 
 ## LOCKED repository interface (the DB abstraction)
 
-The base server code depends ONLY on these. `db/mongo` and `db/postgres` each provide implementations. Types + interface live in **base** (`apps/server/src/models/users.ts`, `models/widgets.ts`); the impl lives in the **overlay** (`models/users.impl.ts`, `models/widgets.impl.ts`).
+The base server code depends ONLY on these. **Base ships NO `models/` directory** — the DB overlay owns `apps/server/src/models/users.ts` and `models/widgets.ts` outright, and each file is self-contained: domain type + `*Repo` interface + the concrete `$users`/`$widgets` implementation for that database, in ONE file (no `.impl` indirection). Both overlays must export the identical surface below so base handlers compile against either.
 
 ```ts
 // @pimasi/lib/values/auth  -> enum UserRoles { ADMIN="admin", USER="user" }
@@ -121,16 +121,16 @@ export interface WidgetsRepo {
 }
 ```
 
-### base `models/users.ts` shape (types + interface + wiring)
+### overlay `models/users.ts` shape (single file: types + interface + implementation)
 ```ts
 import { UserRoles } from "@pimasi/lib/values/auth";
-import { usersRepo } from "./users.impl";
+import { $mongo } from "../services/db";   // or { $db, Database } for the Kysely overlay
 export interface UserModel { ... }         // as above
 export interface UsersRepo { ... }         // as above
-export const $users: UsersRepo = usersRepo;
+export const $users: UsersRepo = { ...concrete driver implementation... };
 export function normaliseEmail(email: string): string { return email.trim().toLowerCase(); }
 ```
-`models/widgets.ts` mirrors this: exports `WidgetModel`, `WidgetUpdate`, `WidgetsRepo`, `toWidgetResponse(model): Widget` (Dates -> `.toISOString()`, drop `user_id`; `Widget` type from `@pimasi/lib/schemas/api/widget.schema`), and `export const $widgets: WidgetsRepo = widgetsRepo` from `./widgets.impl`.
+`models/widgets.ts` mirrors this: exports `WidgetModel`, `WidgetUpdate`, `WidgetsRepo`, the concrete `export const $widgets: WidgetsRepo = { ... }`, and `toWidgetResponse(model): Widget` (Dates -> `.toISOString()`, drop `user_id`; `Widget` type from `@pimasi/lib/schemas/api/widget.schema`). The interface blocks are duplicated verbatim between the two DB overlays — keep them in sync with the contract above; only one overlay ships per generated project.
 
 ### Handler refactor (base) — replace raw driver calls with semantic repo calls
 Map the existing `/home/bahatron/git/pimasi-starter` handler DB calls:
@@ -161,8 +161,7 @@ Map the existing `/home/bahatron/git/pimasi-starter` handler DB calls:
 
 ### db/mongo/ (overlay)
 - `apps/server/src/services/db.ts` — `export const $mongo = new MongoClient($env.MONGO_URL).db($env.MONGO_DATABASE)`
-- `apps/server/src/models/users.impl.ts` — `export const usersRepo: UsersRepo` backed by `$mongo.collection<UserModel>("users")`
-- `apps/server/src/models/widgets.impl.ts` — `export const widgetsRepo: WidgetsRepo` (findOneAndUpdate returnDocument:"after" etc.)
+- `apps/server/src/models/users.ts` + `models/widgets.ts` — the complete single-file models (types + `*Repo` interfaces + `$users`/`$widgets` backed by `$mongo.collection(...)`; widgets uses findOneAndUpdate returnDocument:"after" etc.)
 - `apps/server/src/migrations/index.ts` (the advisory-lock `runMigrations` from pimasi-starter) + `migrations/migration.ts` factory location note: keep the `Migration` factory in `app/migration.ts` (base already has it) + one concrete migration creating indexes (users unique {email}, widgets {user_id, created_at:-1})
 - `apps/server/src/utils/env.ts` — common env + `MONGO_URL` (getenv), `MONGO_DATABASE` (getenv)
 - `apps/server/src/test/db-helpers.ts` — Mongo test seeding/handles/teardown/cleanup
@@ -171,7 +170,7 @@ Map the existing `/home/bahatron/git/pimasi-starter` handler DB calls:
 
 ### db/postgres/ (overlay — Kysely)
 - `apps/server/src/services/db.ts` — a Kysely instance over `pg` Pool: `export const $db = new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: $env.DATABASE_URL }) }) })`. Also `export interface Database { users: UsersTable; widgets: WidgetsTable; migrations?: ... }` (Kysely table types; use `Generated`/`ColumnType` as needed; `roles` stored as `jsonb`).
-- `apps/server/src/models/users.impl.ts` / `widgets.impl.ts` — `UsersRepo`/`WidgetsRepo` via Kysely; map DB rows → models (NULL → `undefined` for `password_hash`/`firebase_id`; `disabled_at` stays `Date | null`; parse `roles` jsonb → `UserRoles[]`). `update` builds a partial `set(...)`.
+- `apps/server/src/models/users.ts` / `widgets.ts` — the complete single-file models: types + interfaces + `$users`/`$widgets` via Kysely; map DB rows → models (NULL → `undefined` for `password_hash`/`firebase_id`; `disabled_at` stays `Date | null`; parse `roles` jsonb → `UserRoles[]`). `update` builds a partial `set(...)`.
 - `apps/server/src/migrations/index.ts` — `runMigrations()` using Kysely's `Migrator` with an in-code migration provider; migration `0001_init` creates `users` (id pk text, timestamps timestamptz, email unique, jsonb roles, nullable password_hash/firebase_id/disabled_at) and `widgets` (id pk, user_id fk-ish text, timestamps, index on (user_id, created_at desc)). Ensure it is idempotent / advisory-locked (Kysely Migrator handles a migration lock table).
 - `apps/server/src/utils/env.ts` — common env + `DATABASE_URL` (getenv).
 - `apps/server/src/test/db-helpers.ts` — Postgres/Kysely test seeding/handles/teardown/cleanup (own pool).

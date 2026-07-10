@@ -82,7 +82,7 @@ The template ships ready to run. To turn it into your own product:
 The slice touches four layers:
 
 - **Shared schema** — `apps/shared/lib/src/schemas/api/widget.schema.ts`. `WidgetSchema` (the response shape), `CreateWidgetRequestSchema`, `UpdateWidgetRequestSchema`, `WidgetListResponseSchema`, plus `Static` types. Built with `Schema` from `@pimasi/utils/lib/json-schema` — the single source of truth for both runtime validation and TypeScript types.
-- **Server model** — `apps/server/src/models/widgets.ts`. The `WidgetModel`, the `WidgetsRepo` interface (`$widgets`), and `toWidgetResponse()` mapping `Date`s to ISO strings. The concrete implementation lives in `widgets.impl.ts`, supplied by the database layer — swapping MongoDB for Postgres swaps only that file.
+- **Server model** — `apps/server/src/models/widgets.ts`. One file holds it all: the `WidgetModel` type, the `WidgetsRepo` interface, the `$widgets` implementation for the database this project was generated with, and `toWidgetResponse()` mapping `Date`s to ISO strings. Swapping MongoDB for Postgres swaps only this file.
 - **Server routes + tests** — `apps/server/src/handlers/widget/*.route.ts`. `GET`/`POST /widgets` and `GET`/`PATCH`/`DELETE /widgets/:id`, each validating with the shared schema, each scoped to the caller's `user_id`, each shipping a matching `*.test.ts`.
 - **Web hook + page** — a data-fetching hook under `apps/web/src/` feeds a `/widgets` page. Mutations revalidate the list after a create or delete.
 
@@ -231,7 +231,7 @@ Why: ULIDs are sortable by creation time, URL-safe, and human-readable, which ma
 
 ### Database — one repository interface, two implementations
 
-**The server never talks to the database driver directly.** `apps/server/src/models/users.ts` and `models/widgets.ts` define the `UsersRepo` / `WidgetsRepo` interfaces and the domain types; the concrete implementation lives alongside them in `users.impl.ts` / `widgets.impl.ts`, chosen at generation time (MongoDB or Postgres/Kysely). Handlers depend only on `$users` / `$widgets`. To add a new persisted resource, define its `*Repo` interface in `models/` and provide the matching `*.impl.ts` — do not reach for the raw client inside a handler.
+**The server never talks to the database driver directly.** Each file in `apps/server/src/models/` is self-contained: it defines the domain type, the `*Repo` interface, and the concrete implementation for this project's database (MongoDB or Postgres/Kysely) in one place. Handlers depend only on the exported `$users` / `$widgets` objects. To add a new persisted resource, create one `models/<resource>.ts` with its type, its `*Repo` interface, and the implementation together — do not reach for the raw client inside a handler.
 
 ### Schemas — `@pimasi/utils`, never Zod or ajv
 

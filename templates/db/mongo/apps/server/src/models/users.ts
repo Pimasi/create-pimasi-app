@@ -1,5 +1,5 @@
 import { UserRoles } from "@pimasi/lib/values/auth";
-import { usersRepo } from "./users.impl";
+import { $mongo } from "../services/db";
 
 export interface UserModel {
     id: string;
@@ -45,7 +45,32 @@ export interface UsersRepo {
     update(id: string, changes: Partial<UserModel>): Promise<void>;
 }
 
-export const $users: UsersRepo = usersRepo;
+const _users = $mongo.collection<UserModel>("users");
+
+export const $users: UsersRepo = {
+    async findById(id) {
+        return _users.findOne({ id }, { projection: { _id: 0 } });
+    },
+
+    async findByEmail(email) {
+        return _users.findOne({ email }, { projection: { _id: 0 } });
+    },
+
+    async findByFirebaseOrEmail(firebaseId, email) {
+        return _users.findOne(
+            { $or: [{ firebase_id: firebaseId }, { email }] },
+            { projection: { _id: 0 } },
+        );
+    },
+
+    async insert(user) {
+        await _users.insertOne(user);
+    },
+
+    async update(id, changes) {
+        await _users.updateOne({ id }, { $set: changes });
+    },
+};
 
 /**
  * Canonicalize an email for storage and lookup. All comparisons against
