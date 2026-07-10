@@ -1,6 +1,6 @@
 import { Route } from "../../app/route";
 import { BadRequest, Forbidden, Unauthorized } from "@pimasi/utils/lib/error";
-import { $sendLoginEmailQueue } from "./send-login-email.queue";
+import { dispatchLoginEmail } from "../email/dispatch";
 import { LoginWithEmailRequestSchema } from "@pimasi/lib/schemas/api/auth-login-email.schema";
 import {
     getFirebaseAuthorizedDomains,
@@ -49,7 +49,7 @@ export const LoginWithEmailRoute = Route({
                 throw Forbidden("redirect_url is not on an authorized domain");
             }
 
-            await $sendLoginEmailQueue.add({
+            await dispatchLoginEmail({
                 email,
                 redirect_url: redirectUrl,
             });

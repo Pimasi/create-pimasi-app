@@ -2,6 +2,12 @@ import { createClient } from "redis";
 import { $env } from "../utils/env";
 import { $logger } from "../utils/logger";
 
+if (!$env.REDIS_URL) {
+    throw new Error(
+        "REDIS_URL is required when redis-backed features are enabled",
+    );
+}
+
 const client = createClient({
     url: $env.REDIS_URL,
     socket: {

@@ -6,7 +6,6 @@ import { $session } from "./app/session.service";
 import { $env } from "./utils/env";
 import { ERROR_HANDLER_MIDDLEWARE } from "./middleware/error-handler";
 import { PARSE_SESSION_MIDDLEWARE } from "./handlers/auth/parse-session.middleware";
-import { QueueMonitor } from "./app/queues";
 import { runMigrations } from "./migrations";
 import { resolve } from "node:path";
 import { createServer } from "node:http";
@@ -24,11 +23,6 @@ $session.run({}, async () => {
         REQUEST_LOGGER_MIDDLEWARE,
         PARSE_SESSION_MIDDLEWARE,
     ];
-
-    if (!isProduction) {
-        let { adapter } = await QueueMonitor();
-        preRouteMiddleware.push(["/bull", adapter.getRouter()]);
-    }
 
     let app = await AppServer({
         swagger: {

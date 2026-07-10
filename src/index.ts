@@ -97,6 +97,9 @@ function printHelp(): void {
             `  --db <mongo|postgres>         Database (postgres uses Kysely)`,
             `  --design <shadcn|bespoke>     Design system for apps/web`,
             `  --cordova / --no-cordova      Toggle Cordova mobile packaging`,
+            `  --workers / --no-workers      Toggle BullMQ background workers + queues`,
+            `  --cache / --no-cache          Toggle the Redis-backed $cache service`,
+            `  --rate-limit / --no-rate-limit  Toggle Redis-backed rate limiting`,
             `  --yes, -y                     Non-interactive; use flags + defaults`,
             `  --no-install                  Skip npm install`,
             `  --no-git                      Skip git init`,
@@ -154,9 +157,13 @@ async function main(): Promise<void> {
                     dir: { type: "string" },
                     cordova: { type: "boolean" },
                     "no-cordova": { type: "boolean" },
-                    install: { type: "boolean" },
+                    workers: { type: "boolean" },
+                    "no-workers": { type: "boolean" },
+                    cache: { type: "boolean" },
+                    "no-cache": { type: "boolean" },
+                    "rate-limit": { type: "boolean" },
+                    "no-rate-limit": { type: "boolean" },
                     "no-install": { type: "boolean" },
-                    git: { type: "boolean" },
                     "no-git": { type: "boolean" },
                     yes: { type: "boolean", short: "y" },
                     force: { type: "boolean" },
@@ -274,6 +281,66 @@ async function main(): Promise<void> {
         },
     );
 
+    const workersFlag = values.workers
+        ? true
+        : values["no-workers"]
+          ? false
+          : undefined;
+    const workers = await resolveOption<boolean>(
+        workersFlag,
+        isYes,
+        false,
+        async () => {
+            const answer = await confirm({
+                message:
+                    "Does the project need backend workers? (BullMQ + Redis)",
+                initialValue: false,
+            });
+            ensureNotCancelled(answer);
+            return answer as boolean;
+        },
+    );
+
+    const cacheFlag = values.cache
+        ? true
+        : values["no-cache"]
+          ? false
+          : undefined;
+    const cache = await resolveOption<boolean>(
+        cacheFlag,
+        isYes,
+        true,
+        async () => {
+            const answer = await confirm({
+                message:
+                    "Does the project need Redis for caching? ($cache service)",
+                initialValue: true,
+            });
+            ensureNotCancelled(answer);
+            return answer as boolean;
+        },
+    );
+
+    const rateLimitFlag = values["rate-limit"]
+        ? true
+        : values["no-rate-limit"]
+          ? false
+          : undefined;
+    const rateLimit = await resolveOption<boolean>(
+        rateLimitFlag,
+        isYes,
+        true,
+        async () => {
+            const answer = await confirm({
+                message:
+                    "Does the project need rate limiting? (Redis-backed, protects auth routes)",
+                initialValue: true,
+            });
+            ensureNotCancelled(answer);
+            return answer as boolean;
+        },
+    );
+
     if (values.design !== undefined && !isDesign(values.design)) {
         fail(`Invalid --design "${values.design}" (use shadcn|bespoke).`);
     }
@@ -333,7 +400,16 @@ async function main(): Promise<void> {
     const doInstall = !values["no-install"];
     const doGit = !values["no-git"];
 
-    const selections: Selections = { slug, frontend, database, design, cordova };
+    const selections: Selections = {
+        slug,
+        frontend,
+        database,
+        design,
+        cordova,
+        workers,
+        cache,
+        rateLimit,
+    };
     const templatesDir = findTemplatesDir();
 
     const s = spinner();
@@ -362,9 +438,12 @@ async function main(): Promise<void> {
         pimasi_auth_token: `${slug.replaceAll("-", "_")}_auth_token`,
     });
     setRootPackageName(targetDir, slug);
-    s.stop(
-        `Composed ${pc.bold(slug)} (${frontend} + ${database} + ${design}${cordova ? " + cordova" : ""})`,
-    );
+    const stackParts: string[] = [frontend, database, design];
+    if (cordova) stackParts.push("cordova");
+    if (workers) stackParts.push("workers");
+    if (cache) stackParts.push("cache");
+    if (rateLimit) stackParts.push("rate-limit");
+    s.stop(`Composed ${pc.bold(slug)} (${stackParts.join(" + ")})`);
     log.info(
         `Packages: ${pc.bold(`@${slug}/lib`)}, ${pc.bold(`${slug}-server`)}, ${pc.bold(`${slug}-web`)}`,
     );

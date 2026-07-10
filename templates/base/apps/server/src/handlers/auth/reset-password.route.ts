@@ -1,6 +1,6 @@
 import { Route } from "../../app/route";
 import { Schema } from "@pimasi/utils/lib/json-schema";
-import { $sendResetPasswordEmailQueue } from "./send-reset-password-email.queue";
+import { dispatchResetPasswordEmail } from "../email/dispatch";
 import { ResetPasswordRequestSchema } from "@pimasi/lib/schemas/api/auth-reset-password.schema";
 import { normaliseEmail } from "../../models/users";
 import { RATE_LIMIT } from "../../middleware/rate-limit";
@@ -42,7 +42,7 @@ export const ResetPasswordRoute = Route({
 
             let frontendOrigin = getRequestOrigin(req);
 
-            await $sendResetPasswordEmailQueue.add({
+            await dispatchResetPasswordEmail({
                 email: normaliseEmail(email),
                 frontend_origin: frontendOrigin,
             });

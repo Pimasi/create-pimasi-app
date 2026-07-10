@@ -19,9 +19,14 @@ function designLabel(design: Design): string {
     return design === "shadcn" ? "shadcn/ui" : "bespoke tokens";
 }
 
+function needsRedis(selections: Selections): boolean {
+    return selections.workers || selections.cache || selections.rateLimit;
+}
+
 export function renderDockerCompose(selections: Selections): string {
     const { slug, database, frontend } = selections;
     const dbName = toDbName(slug);
+    const withRedis = needsRedis(selections);
 
     const serverDbEnv =
         database === "mongo"
@@ -39,7 +44,7 @@ export function renderDockerCompose(selections: Selections): string {
         `    FIREBASE_PRIVATE_KEY: \${FIREBASE_PRIVATE_KEY}`,
         `    FIREBASE_PROJECT_ID: \${FIREBASE_PROJECT_ID}`,
         `    FIREBASE_API_KEY: \${FIREBASE_API_KEY}`,
-        `    REDIS_URL: redis://${slug}-redis:6379`,
+        ...(withRedis ? [`    REDIS_URL: redis://${slug}-redis:6379`] : []),
         serverDbEnv,
         `    JWT_SECRET: \${JWT_SECRET}`,
         `    SENDGRID_API_KEY: \${SENDGRID_API_KEY}`,
@@ -136,8 +141,12 @@ export function renderDockerCompose(selections: Selections): string {
         `        depends_on:`,
         `            ${dbServiceName}:`,
         `                condition: service_healthy`,
-        `            ${slug}-redis:`,
-        `                condition: service_started`,
+        ...(withRedis
+            ? [
+                  `            ${slug}-redis:`,
+                  `                condition: service_started`,
+              ]
+            : []),
         `        command: npm run start`,
         `        develop:`,
         `            watch:`,
@@ -212,7 +221,7 @@ export function renderDockerCompose(selections: Selections): string {
         webAnchor,
         `services:`,
         dbService,
-        redisService,
+        ...(withRedis ? [redisService] : []),
         serverService,
         webService,
     ];
@@ -241,13 +250,19 @@ export function renderEnvExample(selections: Selections): string {
                   `POSTGRES_PASSWORD="secret"`,
               ];
 
+    const redisBlock = needsRedis(selections)
+        ? [
+              `# Redis is provisioned by docker-compose; REDIS_URL is wired there`,
+              `# (redis://${slug}-redis:6379).`,
+              ``,
+          ]
+        : [];
+
     return [
         `# Auth JWT signing secret — required`,
         `JWT_SECRET="some_secret_key"`,
         ``,
-        `# Redis is provisioned by docker-compose; REDIS_URL is wired there`,
-        `# (redis://${slug}-redis:6379).`,
-        ``,
+        ...redisBlock,
         ...dbBlock,
         ``,
         `# Firebase auth — optional, leave blank to disable Firebase auth`,
@@ -269,7 +284,8 @@ export function injectStackBlock(
     readmePath: string,
     selections: Selections,
 ): void {
-    const { frontend, database, design, cordova } = selections;
+    const { frontend, database, design, cordova, workers, cache, rateLimit } =
+        selections;
 
     const block = [
         ``,
@@ -279,6 +295,9 @@ export function injectStackBlock(
         `- **Backend**: Express API (shared)`,
         `- **Database**: ${databaseLabel(database)}`,
         `- **Design system**: ${designLabel(design)}`,
+        `- **Workers**: ${workers ? "BullMQ (Redis-backed queues + workers process)" : "not enabled"}`,
+        `- **Cache**: ${cache ? "Redis ($cache service)" : "not enabled"}`,
+        `- **Rate limiting**: ${rateLimit ? "Redis-backed (auth routes)" : "not enabled"}`,
         `- **Mobile**: ${cordova ? "Cordova (Android/iOS)" : "not enabled"}`,
         ``,
     ].join("\n");

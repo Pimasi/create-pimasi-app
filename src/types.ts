@@ -8,4 +8,7 @@ export interface Selections {
     database: Database;
     design: Design;
     cordova: boolean;
+    workers: boolean;
+    cache: boolean;
+    rateLimit: boolean;
 }

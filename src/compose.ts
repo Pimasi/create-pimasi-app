@@ -107,6 +107,18 @@ export function compose(
 ): void {
     copyDir(join(templatesDir, "base"), targetDir);
     copyDir(join(templatesDir, "db", selections.database), targetDir);
+    if (selections.cache || selections.rateLimit) {
+        copyDir(join(templatesDir, "server", "redis"), targetDir);
+    }
+    if (selections.rateLimit) {
+        copyDir(join(templatesDir, "server", "rate-limit"), targetDir);
+    }
+    if (selections.workers) {
+        copyDir(join(templatesDir, "server", "workers"), targetDir);
+    }
+    if (selections.cache) {
+        copyDir(join(templatesDir, "server", "cache"), targetDir);
+    }
     copyDir(join(templatesDir, "frontend", selections.frontend), targetDir);
     copyDir(
         join(templatesDir, "design", selections.design, selections.frontend),

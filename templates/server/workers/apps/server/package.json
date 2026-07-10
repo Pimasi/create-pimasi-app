@@ -1,0 +1,9 @@
+{
+    "scripts": {
+        "dev:workers": "npm run watch -- src/workers.ts"
+    },
+    "dependencies": {
+        "@bull-board/express": "^8.1.2",
+        "bullmq": "^5.79.3"
+    }
+}

@@ -11,6 +11,12 @@ import { $logger } from "../utils/logger";
 import { $session } from "../app/session.service";
 import { $alerts } from "./alerts";
 
+if (!$env.REDIS_URL) {
+    throw new Error(
+        "REDIS_URL must be set: BullMQ queues need a Redis connection",
+    );
+}
+
 export type AppQueue = {
     NAME: string;
     QUEUE: Queue<any>;

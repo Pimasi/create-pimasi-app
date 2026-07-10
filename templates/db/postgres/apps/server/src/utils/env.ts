@@ -22,7 +22,7 @@ export const $env = {
     NODE_ENV: validateNodeEnv(),
     PORT: Number(process.env.PORT ?? 3000),
     JWT_SECRET: getenv("JWT_SECRET"),
-    REDIS_URL: getenv("REDIS_URL"),
+    REDIS_URL: process.env.REDIS_URL ?? "",
     NOTIFICATION_URL: process.env.NOTIFICATION_URL,
     TEST_URL: process.env.TEST_URL,
 
