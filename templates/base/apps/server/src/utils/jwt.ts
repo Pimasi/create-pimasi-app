@@ -20,6 +20,11 @@ export const $jwt = {
 
     verify: (token: string): UserToken => {
         let decoded = jwt.verify(token, $env.JWT_SECRET) as any;
+
+        if (decoded?.type !== "user" || typeof decoded.user_id !== "string") {
+            throw new Error("token is not a user token");
+        }
+
         return { type: "user", user_id: decoded.user_id };
     },
 };

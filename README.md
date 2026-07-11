@@ -18,34 +18,36 @@ The first positional argument is the app name; `--name` overrides it. The name i
 
 ## Options
 
-| Flag | Values | Default | Purpose |
-| --- | --- | --- | --- |
-| `--name <slug>` | kebab-case | `my-pimasi-app` | App name (also the first positional); becomes the package scope `@<name>/lib` |
-| `--dir <path>` | path | `./<name>` | Target directory (must be empty unless `--force`) |
-| `--frontend <f>` | `tanstack` \| `nextjs` | `tanstack` | Web app framework |
-| `--db <d>` | `mongo` \| `postgres` | `mongo` | Data layer (`postgres` uses Kysely) |
-| `--design <d>` | `shadcn` \| `bespoke` | `shadcn` | Design system for `apps/web` |
-| `--cordova` / `--no-cordova` | — | off | Mobile packaging of the web app |
-| `--workers` / `--no-workers` | — | off | BullMQ queues + a dedicated workers process |
-| `--cache` / `--no-cache` | — | on | Redis-backed `$cache` service |
-| `--rate-limit` / `--no-rate-limit` | — | on | Redis-backed rate limiting on the auth routes |
-| `--yes`, `-y` | — | — | Skip prompts; use flags + defaults |
-| `--no-install` | — | — | Skip `npm install` |
-| `--no-git` | — | — | Skip `git init` |
-| `--force` | — | — | Allow a non-empty target directory |
+| Flag                               | Values                 | Default         | Purpose                                                                                                 |
+| ---------------------------------- | ---------------------- | --------------- | ------------------------------------------------------------------------------------------------------- |
+| `--name <slug>`                    | kebab-case             | `my-pimasi-app` | App name (also the first positional); becomes the package scope `@<name>/lib`                           |
+| `--dir <path>`                     | path                   | `./<name>`      | Target directory (must be empty unless `--force`)                                                       |
+| `--frontend <f>`                   | `tanstack` \| `nextjs` | `tanstack`      | Web app framework                                                                                       |
+| `--db <d>`                         | `mongo` \| `postgres`  | `mongo`         | Data layer (`postgres` uses Kysely)                                                                     |
+| `--design <d>`                     | `shadcn` \| `bespoke`  | `shadcn`        | Design system for `apps/web`                                                                            |
+| `--cordova` / `--no-cordova`       | —                      | off             | Mobile packaging of the web app                                                                         |
+| `--workers` / `--no-workers`       | —                      | off             | BullMQ queues + a dedicated workers process                                                             |
+| `--cache` / `--no-cache`           | —                      | on              | Redis-backed `$cache` service                                                                           |
+| `--rate-limit` / `--no-rate-limit` | —                      | on              | Redis-backed rate limiting on the auth routes                                                           |
+| `--websockets` / `--no-websockets` | —                      | off             | Realtime WebSocket push over Redis pub/sub (pulls Redis in; ships client hooks for the chosen frontend) |
+| `--yes`, `-y`                      | —                      | —               | Skip prompts; use flags + defaults                                                                      |
+| `--no-install`                     | —                      | —               | Skip `npm install`                                                                                      |
+| `--no-git`                         | —                      | —               | Skip `git init`                                                                                         |
+| `--force`                          | —                      | —               | Allow a non-empty target directory                                                                      |
 
 ## Options matrix
 
-Eight stack combinations (frontend × database × design), each with Cordova and three server features optionally layered on:
+Eight stack combinations (frontend × database × design), each with Cordova and four server features optionally layered on:
 
 - **Frontend**: `tanstack` (React 19 + Vite + TanStack Router SPA) or `nextjs` (Next.js App Router, a client of the Express API).
 - **Database**: `mongo` (MongoDB driver) or `postgres` (Kysely over `pg`). The choice swaps only the server's data-access layer behind a repository interface.
 - **Design**: `shadcn` (shadcn/ui — standard tokens, light+dark, `components.json`) or `bespoke` (in-house dark palette, zero extra deps). Both implement the same component API and token vocabulary, so pages are written once; the choice swaps only `apps/web`'s theme CSS and `components/ui/*`.
 - **Cordova**: adds an `apps/web/cordova/` shell plus a `build:cordova` script for Android/iOS packaging.
 - **Server features** — Redis (compose service + client) ships only when at least one is on:
-    - `--workers` (default off): BullMQ queues, a workers process, and email dispatch via queues.
-    - `--cache` (default on): the Redis-backed `$cache` service.
-    - `--rate-limit` (default on): the Redis-backed `RATE_LIMIT` middleware protecting the auth routes (off swaps in a no-op middleware with the same API).
+  - `--workers` (default off): BullMQ queues, a workers process, and email dispatch via queues.
+  - `--cache` (default on): the Redis-backed `$cache` service.
+  - `--rate-limit` (default on): the Redis-backed `RATE_LIMIT` middleware protecting the auth routes (off swaps in a no-op middleware with the same API).
+  - `--websockets` (default off): a JWT-authenticated `/ws` endpoint with Redis pub/sub fan-out, plus a `WebSocketProvider` and hooks for the chosen frontend. The infrastructure ships unmounted — the generated README explains how to wire it into the app shell.
 
 ## How templates compose
 
@@ -53,8 +55,8 @@ Fragments live under `templates/` and are copied in order onto the target (disjo
 
 1. `base/` — root tooling, `@pimasi/lib`, and the Express server **framework** (always copied).
 2. `db/<db>/` — the server data-access overlay (`db.ts`, repo impls, migrations, `env.ts`, test helpers) plus a `package.json` deps partial.
-3. `server/*` — optional server-feature overlays onto `apps/server`, in order: `redis` (when cache or rate-limit is on), `rate-limit`, `workers`, `cache`.
-4. `frontend/<frontend>/` — `apps/web` for the chosen framework.
+3. `server/*` — optional server-feature overlays onto `apps/server`, in order: `redis` (when cache, rate-limit, or websockets is on), `rate-limit`, `workers`, `cache`, then `websockets/server` (the `/ws` endpoint, the `$websocket` send service, `$pubsub`, and shared event schema).
+4. `frontend/<frontend>/` — `apps/web` for the chosen framework, then `websockets/<frontend>/` when WebSockets is on (the web client, provider, and hooks).
 5. `design/<design>/<frontend>/`, then `cordova/<frontend>/` when enabled — theme CSS and `components/ui/*`, the mobile shell, and their web `package.json` partials.
 
 The CLI then **generates** `docker-compose.yml`, `.env.example`, and a `## Stack` block in the project `README.md` from the selections, and finally replaces the `__APP_SLUG__` placeholder plus the workspace and container names across all text files (`@pimasi/lib` → `@<name>/lib`, `pimasi-server` → `<name>-server`, `pimasi-web` → `<name>-web`, `pimasi-mongo`/`pimasi-redis`/`pimasi-postgres` → `<name>-mongo`/`<name>-redis`/`<name>-postgres`; `@pimasi/utils` stays as-is).
