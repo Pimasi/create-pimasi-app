@@ -315,6 +315,15 @@ export function renderEnvExample(selections: Selections): string {
       ]
     : [];
 
+  const websocketBlock = selections.websockets
+    ? [
+        `# WebSocket allowed origins (CSWSH defence) — optional, comma-separated.`,
+        `# Leave blank to accept any origin.`,
+        `WS_ALLOWED_ORIGINS=""`,
+        ``,
+      ]
+    : [];
+
   return [
     `# Auth JWT signing secret — required`,
     `JWT_SECRET="some_secret_key"`,
@@ -322,6 +331,7 @@ export function renderEnvExample(selections: Selections): string {
     ...redisBlock,
     ...dbBlock,
     ``,
+    ...websocketBlock,
     `# Firebase auth — optional, leave blank to disable Firebase auth`,
     `FIREBASE_CLIENT_EMAIL=""`,
     `FIREBASE_PRIVATE_KEY=""`,

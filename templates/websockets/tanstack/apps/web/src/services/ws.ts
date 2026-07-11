@@ -29,6 +29,10 @@ function open(): void {
         reconnectAttempt = 0;
     };
 
+    ws.onerror = (event) => {
+        console.warn("websocket error", event);
+    };
+
     ws.onmessage = (message) => {
         let event: WSEvent;
         try {

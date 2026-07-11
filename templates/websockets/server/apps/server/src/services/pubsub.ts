@@ -13,7 +13,11 @@ let subscriberPromise: ReturnType<typeof createSubscriber> | null = null;
 
 function getSubscriber() {
     if (!subscriberPromise) {
-        subscriberPromise = createSubscriber();
+        subscriberPromise = createSubscriber().catch((err) => {
+            // Do not cache a failed connection, so a later call can retry.
+            subscriberPromise = null;
+            throw err;
+        });
     }
     return subscriberPromise;
 }
