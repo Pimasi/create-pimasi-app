@@ -4,7 +4,8 @@
     "description": "create-next-app-style scaffolder for full-stack PIMASI TypeScript monorepos",
     "type": "module",
     "bin": {
-        "create-pimasi-app": "dist/index.js"
+        "create-pimasi-app": "dist/index.js",
+        "pimasi": "dist/index.js"
     },
     "files": [
         "dist",

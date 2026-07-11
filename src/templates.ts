@@ -1,14 +1,16 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export function findTemplatesDir(): string {
+export function findCliRoot(): string {
   let current = dirname(fileURLToPath(import.meta.url));
 
   for (let i = 0; i < 8; i++) {
-    const candidate = join(current, "templates");
-    if (existsSync(candidate) && existsSync(join(current, "DESIGN.md"))) {
-      return candidate;
+    if (
+      existsSync(join(current, "templates")) &&
+      existsSync(join(current, "DESIGN.md"))
+    ) {
+      return current;
     }
 
     const parent = dirname(current);
@@ -17,6 +19,17 @@ export function findTemplatesDir(): string {
   }
 
   throw new Error(
-    "Could not locate templates/ directory (expected alongside DESIGN.md).",
+    "Could not locate the CLI root (expected templates/ alongside DESIGN.md).",
   );
+}
+
+export function findTemplatesDir(): string {
+  return join(findCliRoot(), "templates");
+}
+
+export function getCliVersion(): string {
+  const pkg = JSON.parse(
+    readFileSync(join(findCliRoot(), "package.json"), "utf8"),
+  ) as { version?: string };
+  return pkg.version ?? "0.0.0";
 }

@@ -12,6 +12,9 @@ npx create-pimasi-app
 
 # non-interactive (scriptable)
 npx create-pimasi-app my-app --yes --frontend tanstack --db postgres --design shadcn
+
+# later, inside a generated project: add server features
+npx pimasi add websockets
 ```
 
 The first positional argument is the app name; `--name` overrides it. The name is wired through the whole project: it becomes the root `package.json` name **and the package scope**, so an app named `acme` has workspaces `@acme/lib`, `acme-server`, `acme-web` and its code imports `@acme/lib/schemas/...`. (The external `@pimasi/utils` dependency is never renamed.)
@@ -59,7 +62,18 @@ Fragments live under `templates/` and are copied in order onto the target (disjo
 4. `frontend/<frontend>/` — `apps/web` for the chosen framework, then `websockets/<frontend>/` when WebSockets is on (the web client, provider, and hooks).
 5. `design/<design>/<frontend>/`, then `cordova/<frontend>/` when enabled — theme CSS and `components/ui/*`, the mobile shell, and their web `package.json` partials.
 
-The CLI then **generates** `docker-compose.yml`, `.env.example`, and a `## Stack` block in the project `README.md` from the selections, and finally replaces the `__APP_SLUG__` placeholder plus the workspace and container names across all text files (`@pimasi/lib` → `@<name>/lib`, `pimasi-server` → `<name>-server`, `pimasi-web` → `<name>-web`, `pimasi-mongo`/`pimasi-redis`/`pimasi-postgres` → `<name>-mongo`/`<name>-redis`/`<name>-postgres`; `@pimasi/utils` stays as-is).
+The CLI then **generates** `docker-compose.yml`, `.env.example`, and a `## Stack` block in the project `README.md` from the selections, and finally replaces the `__APP_SLUG__` placeholder plus the workspace and container names across all text files (`@pimasi/lib` → `@<name>/lib`, `pimasi-server` → `<name>-server`, `pimasi-web` → `<name>-web`, `pimasi-mongo`/`pimasi-redis`/`pimasi-postgres` → `<name>-mongo`/`<name>-redis`/`<name>-postgres`; `@pimasi/utils` stays as-is). It records the selections in a **`pimasi.json` manifest** and injects itself as a devDependency, which is what powers add mode later.
+
+## Adding features to an existing project
+
+The package ships a second bin, `pimasi`, for projects already scaffolded (it reads `pimasi.json`):
+
+```bash
+npx pimasi add websockets        # or: workers, cache, rate-limit — several at once is fine
+npx pimasi add                   # interactive: pick from the features currently off
+```
+
+An add re-runs template composition for just the delta (pulling Redis in when the first Redis-needing feature arrives) and updates `docker-compose.yml`, `.env.example`, and the README stack block. It refuses to run on a dirty git tree so every add is reviewable with `git diff`. Files you have edited are never clobbered: the CLI writes `<file>.new` next to them and reports; `package.json` merges never downgrade a dependency you bumped. Frontend, database, and design are scaffold-time choices — `add` covers the server features only.
 
 ## Generated project conventions
 
@@ -80,4 +94,6 @@ npm run build                                                       # tsc -> dis
 npm start -- --help                                                # run the built bin
 ```
 
-Source lives in `src/`: `index.ts` (prompts + flags + orchestration), `compose.ts` (recursive copy, deep-merge, placeholders), `generate.ts` (docker-compose / env / README generators), `templates.ts` (locate `templates/`), and `types.ts`. The `templates/` directory is resolved by walking up from the running module until a directory containing both `templates/` and `DESIGN.md` is found, so it works from both `dist/` and `tsx src/`.
+Source lives in `src/`: `index.ts` (prompts + flags + orchestration), `add.ts` (add mode), `compose.ts` (recursive copy, deep-merge, placeholders), `generate.ts` (docker-compose / env / README / `pimasi.json` generators), `templates.ts` (locate `templates/`), and `types.ts`. The `templates/` directory is resolved by walking up from the running module until a directory containing both `templates/` and `DESIGN.md` is found, so it works from `dist/`, from `tsx src/`, and from a generated project's `node_modules`.
+
+One release-ordering caveat: scaffolds inject the running CLI version as a devDependency of the generated project, so `npm install` there only resolves once that version is published. When testing from source, pass `--no-install` or point the generated project at your checkout: `npm pkg set devDependencies.create-pimasi-app=file:<path-to-repo>`.

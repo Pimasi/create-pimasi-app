@@ -288,15 +288,36 @@ Base ships an autoloaded boot-hook pattern mirroring the `*.route.ts` / `*.queue
 
 ## The CLI (`src/`)
 
-- Node ESM TypeScript; `bin` `create-pimasi-app` → `dist/index.js` (`tsc` build; `tsx src/index.ts` for dev). Deps: `@clack/prompts` + `picocolors` only.
+- Node ESM TypeScript; TWO bins pointing at the same `dist/index.js`: `create-pimasi-app` (the scaffold front door — `npm create pimasi-app`) and `pimasi` (the lifecycle tool inside generated projects). `tsc` build; `tsx src/index.ts` for dev. Deps: `@clack/prompts` + `picocolors` only.
 - Wizard order: app name (kebab-validated; becomes the package scope) → frontend → cordova → database → workers → cache → rate limiting → websockets → design → target dir (refuse non-empty unless `--force`). Every prompt has a flag twin: `--name`, `--frontend`, `--db`, `--design`, `--cordova`/`--no-cordova`, `--workers`/`--no-workers`, `--cache`/`--no-cache`, `--rate-limit`/`--no-rate-limit`, `--websockets`/`--no-websockets`, `--dir`, plus `--yes` (non-interactive, defaults + flags — workers OFF, cache ON, rate limiting ON, websockets OFF), `--no-install`, `--no-git`, `--force`, `--help`.
-- Modules: `index.ts` (flags/prompts/orchestration), `compose.ts` (recursive copy with deep-merge for overlay `package.json` files, placeholder/token replacement), `generate.ts` (docker-compose / .env.example / README Stack-block renderers), `templates.ts` (resolve `templates/` by walking up from the running module until a directory holding both `templates/` and `DESIGN.md` is found — works from `dist/` and from source), `types.ts`.
+- Modules: `index.ts` (flags/prompts/orchestration/add-mode routing), `add.ts` (add mode — see below), `compose.ts` (recursive copy with deep-merge for overlay `package.json` files, `buildReplacements(slug)` + placeholder/token replacement), `generate.ts` (docker-compose / .env.example / README Stack-block renderers + the `pimasi.json` manifest), `templates.ts` (resolve the CLI root by walking up from the running module until a directory holding both `templates/` and `DESIGN.md` is found — works from `dist/`, from source, and from a project's `node_modules`), `types.ts`.
 - `renderDockerCompose({slug, frontend, database, design, cordova, workers, cache, rateLimit, websockets})`: DB service (`<slug>-mongo` replica-set with healthcheck, or `<slug>-postgres` postgres:16 with `pg_isready`), `<slug>-redis` only when workers, cache, rate limiting, or websockets is selected, `<slug>-server` (port 4000, DB url env + `REDIS_URL` when Redis ships), `<slug>-web` (port 5173, `VITE_API_URL` or `NEXT_PUBLIC_API_URL`), with compose watch-sync blocks.
 - `renderEnvExample(selections)`: `JWT_SECRET` plus `MONGO_PASSWORD` or `POSTGRES_PASSWORD` (the connection URLs themselves are wired in the generated docker-compose and only noted as comments), and optional Firebase + SendGrid blocks (blank disables them).
+- Scaffolding finalises the root `package.json` with the app name AND a `create-pimasi-app` devDependency (self-injection, `^<cliVersion>`), so later `npx pimasi` calls inside the project resolve the locally installed, version-matched CLI. It then writes the manifest.
+- **Release-ordering constraint**: the self-injected devDependency means `npm install` of a generated project only resolves once the running CLI version is PUBLISHED. Bump + `npm publish` before scaffolding real projects; when testing from source, either pass `--no-install` or point the generated project's devDependency at the checkout (`npm pkg set devDependencies.create-pimasi-app=file:<repo>`).
+
+## The manifest (`pimasi.json`) and add mode
+
+Every scaffold writes a `pimasi.json` at the project root — the machine-readable record of the selections: `{ name, cliVersion, frontend, database, design, cordova, workers, cache, rateLimit, websockets }` (camelCase; 4-space JSON, matching the generated prettier config). It is the source of truth for add mode; projects without it (pre-0.2.0) cannot use `add`.
+
+`pimasi add [feature…]` (also reachable as `create-pimasi-app add`, and auto-entered when the CLI runs with no arguments inside a directory containing `pimasi.json`) retrofits the four server axes — `workers`, `cache`, `rate-limit`, `websockets` — onto an existing project. Frontend/database/design/cordova are NOT addable: those are migrations, not adds. Scaffold-only flags are rejected in add mode; with no features named it prompts a multiselect of the currently-off axes (`--yes` requires naming them).
+
+An add is **re-running composition for the delta**: it computes the fragment list old→new selections imply (including `server/redis` when the first redis-needing axis arrives, and `websockets/<frontend>` per the manifest's frontend), applies them with the scaffold's replacement map built from the manifest name, then updates the generated files, bumps the root devDependency, and rewrites `pimasi.json` with the new axes + current `cliVersion` (a version mismatch with the scaffolding CLI is reported as info).
+
+LOCKED conflict policy (files must never be silently clobbered):
+
+- Requires a **clean git tree** (refuses on dirty or non-git; `--force` bypasses) so every add is reviewable with `git diff` and revertible.
+- Fragment file absent on disk → write. Present and identical → skip. Present and different → compare against the **pristine base render** of the same path (base template + replacements): a match means the user never touched the seam file (rate-limit middleware, email dispatch, process.config.js), so the fragment overwrite is safe; a mismatch writes `<file>.new` beside it and reports.
+- Fragment `package.json` partials merge **additively**: missing keys are added; existing keys always win and differing values are reported (an add never downgrades a user-bumped dependency).
+- Generated files (`docker-compose.yml`, `.env.example`, the README `## Stack` block) use the same pristine trick at whole-artefact scope: re-render from the OLD selections; if the on-disk content matches, replace with the NEW render; otherwise emit `.new` (or print the new Stack block) and report.
+
+The property that keeps add mode honest: scaffolding lean and then adding axes must produce a byte-identical tree to scaffolding with those axes on (see Verification bar).
 
 ## Verification bar
 
 A change to templates or CLI is verified by generating projects and proving them, not by reading. Minimum: for each affected axis, generate a combo, `npm install`, `npm run type-check`, `npm run build`; for server-touching changes also run the vitest suite against live containers (both databases when `db/` or base server code changed). The four canonical combos: tanstack+mongo, tanstack+postgres, nextjs+mongo, nextjs+postgres, with cordova toggled on at least once and the server axes (workers/cache/rate limiting/websockets) exercised at both extremes — at least one combo with all four ON and one with all four OFF.
+
+Add-mode changes additionally prove the **add-equals-generate property**: scaffold a lean project, `pimasi add` axes onto it, and `diff -r` (excluding `.git`) against a direct scaffold with those axes on — the trees must match byte for byte. Exercise the conflict path too (edit a seam file, re-add, expect `.new` + report) and the dirty-tree refusal.
 
 ## Conventions
 

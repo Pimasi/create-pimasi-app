@@ -9,7 +9,7 @@ import {
 import { extname, join } from "node:path";
 import type { Selections } from "./types.js";
 
-const IGNORE_ENTRIES = new Set<string>([
+export const IGNORE_ENTRIES = new Set<string>([
   "node_modules",
   ".git",
   "dist",
@@ -17,7 +17,7 @@ const IGNORE_ENTRIES = new Set<string>([
   "__generated__",
 ]);
 
-const BINARY_EXTENSIONS = new Set<string>([
+export const BINARY_EXTENSIONS = new Set<string>([
   ".png",
   ".jpg",
   ".jpeg",
@@ -45,10 +45,34 @@ const BINARY_EXTENSIONS = new Set<string>([
   ".wav",
 ]);
 
-type JsonRecord = Record<string, unknown>;
+export type JsonRecord = Record<string, unknown>;
 
-function isPlainObject(value: unknown): value is JsonRecord {
+export function isPlainObject(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function buildReplacements(slug: string): Record<string, string> {
+  return {
+    __APP_SLUG__: slug,
+    "@pimasi/lib": `@${slug}/lib`,
+    "pimasi-server": `${slug}-server`,
+    "pimasi-web": `${slug}-web`,
+    "pimasi-mongo": `${slug}-mongo`,
+    "pimasi-redis": `${slug}-redis`,
+    "pimasi-postgres": `${slug}-postgres`,
+    pimasi_auth_token: `${slug.replaceAll("-", "_")}_auth_token`,
+  };
+}
+
+export function applyReplacements(
+  text: string,
+  replacements: Record<string, string>,
+): string {
+  let out = text;
+  for (const [needle, value] of Object.entries(replacements)) {
+    if (out.includes(needle)) out = out.split(needle).join(value);
+  }
+  return out;
 }
 
 export function deepMerge(base: JsonRecord, partial: JsonRecord): JsonRecord {
@@ -150,15 +174,9 @@ export function replacePlaceholders(
       const buffer = readFileSync(entryPath);
       if (buffer.includes(0)) continue;
 
-      let text = buffer.toString("utf8");
-      let changed = false;
-      for (const [needle, value] of Object.entries(replacements)) {
-        if (text.includes(needle)) {
-          text = text.split(needle).join(value);
-          changed = true;
-        }
-      }
-      if (changed) writeFileSync(entryPath, text);
+      const text = buffer.toString("utf8");
+      const replaced = applyReplacements(text, replacements);
+      if (replaced !== text) writeFileSync(entryPath, replaced);
     }
   }
 }

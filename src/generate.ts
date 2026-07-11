@@ -1,5 +1,57 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import type { Database, Design, Frontend, Selections } from "./types.js";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import type {
+  Database,
+  Design,
+  Frontend,
+  Manifest,
+  Selections,
+} from "./types.js";
+
+export const MANIFEST_FILENAME = "pimasi.json";
+
+export function writeManifest(
+  targetDir: string,
+  selections: Selections,
+  cliVersion: string,
+): void {
+  const manifest: Manifest = {
+    name: selections.slug,
+    cliVersion,
+    frontend: selections.frontend,
+    database: selections.database,
+    design: selections.design,
+    cordova: selections.cordova,
+    workers: selections.workers,
+    cache: selections.cache,
+    rateLimit: selections.rateLimit,
+    websockets: selections.websockets,
+  };
+  writeFileSync(
+    join(targetDir, MANIFEST_FILENAME),
+    JSON.stringify(manifest, null, 4) + "\n",
+  );
+}
+
+export function readManifest(projectDir: string): Manifest | null {
+  const manifestPath = join(projectDir, MANIFEST_FILENAME);
+  if (!existsSync(manifestPath)) return null;
+  return JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest;
+}
+
+export function manifestToSelections(manifest: Manifest): Selections {
+  return {
+    slug: manifest.name,
+    frontend: manifest.frontend,
+    database: manifest.database,
+    design: manifest.design,
+    cordova: manifest.cordova,
+    workers: manifest.workers,
+    cache: manifest.cache,
+    rateLimit: manifest.rateLimit,
+    websockets: manifest.websockets,
+  };
+}
 
 function toDbName(slug: string): string {
   return slug.replace(/-/g, "_") + "_local";
@@ -285,10 +337,7 @@ export function renderEnvExample(selections: Selections): string {
   ].join("\n");
 }
 
-export function injectStackBlock(
-  readmePath: string,
-  selections: Selections,
-): void {
+export function renderStackBlock(selections: Selections): string {
   const {
     frontend,
     database,
@@ -300,7 +349,7 @@ export function injectStackBlock(
     websockets,
   } = selections;
 
-  const block = [
+  return [
     ``,
     `## Stack`,
     ``,
@@ -315,6 +364,13 @@ export function injectStackBlock(
     `- **Mobile**: ${cordova ? "Cordova (Android/iOS)" : "not enabled"}`,
     ``,
   ].join("\n");
+}
+
+export function injectStackBlock(
+  readmePath: string,
+  selections: Selections,
+): void {
+  const block = renderStackBlock(selections);
 
   const content = readFileSync(readmePath, "utf8");
   const lines = content.split("\n");

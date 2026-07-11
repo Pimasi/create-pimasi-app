@@ -22,14 +22,24 @@ import {
   text,
 } from "@clack/prompts";
 import pc from "picocolors";
-import { compose, replacePlaceholders } from "./compose.js";
+import { runAdd } from "./add.js";
+import { buildReplacements, compose, replacePlaceholders } from "./compose.js";
 import {
   injectStackBlock,
+  MANIFEST_FILENAME,
   renderDockerCompose,
   renderEnvExample,
+  writeManifest,
 } from "./generate.js";
-import { findTemplatesDir } from "./templates.js";
-import type { Database, Design, Frontend, Selections } from "./types.js";
+import { findTemplatesDir, getCliVersion } from "./templates.js";
+import {
+  SERVER_AXES,
+  type Database,
+  type Design,
+  type Frontend,
+  type Selections,
+  type ServerAxis,
+} from "./types.js";
 
 const DEFAULT_NAME = "my-pimasi-app";
 const FRONTENDS = ["tanstack", "nextjs"] as const;
@@ -88,6 +98,9 @@ function printHelp(): void {
       `Usage:`,
       `  npm create pimasi-app@latest -- [name] [options]`,
       `  npx create-pimasi-app [name] [options]`,
+      `  npx pimasi add [feature…]     Add server features to an existing`,
+      `                                project (reads pimasi.json; features:`,
+      `                                ${SERVER_AXES.join(", ")})`,
       ``,
       `Options:`,
       `  --name <slug>                 App name (kebab-case; becomes the package`,
@@ -111,7 +124,11 @@ function printHelp(): void {
   );
 }
 
-function setRootPackageName(targetDir: string, slug: string): void {
+function finaliseRootPackage(
+  targetDir: string,
+  slug: string,
+  cliVersion: string,
+): void {
   const pkgPath = join(targetDir, "package.json");
   if (!existsSync(pkgPath)) return;
   const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as Record<
@@ -119,7 +136,14 @@ function setRootPackageName(targetDir: string, slug: string): void {
     unknown
   >;
   pkg.name = slug;
+  const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>;
+  devDeps["create-pimasi-app"] = `^${cliVersion}`;
+  pkg.devDependencies = devDeps;
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + "\n");
+}
+
+function isServerAxis(value: string): value is ServerAxis {
+  return (SERVER_AXES as readonly string[]).includes(value);
 }
 
 function tryGitInit(targetDir: string): void {
@@ -189,6 +213,61 @@ async function main(): Promise<void> {
   }
 
   const isYes = Boolean(values.yes);
+
+  const wantsAdd =
+    positionals[0] === "add" ||
+    (positionals.length === 0 &&
+      values.name === undefined &&
+      values.dir === undefined &&
+      existsSync(join(process.cwd(), MANIFEST_FILENAME)));
+
+  if (wantsAdd) {
+    const scaffoldOnly = [
+      "name",
+      "frontend",
+      "db",
+      "design",
+      "dir",
+      "cordova",
+      "no-cordova",
+      "workers",
+      "no-workers",
+      "cache",
+      "no-cache",
+      "rate-limit",
+      "no-rate-limit",
+      "websockets",
+      "no-websockets",
+      "no-git",
+    ].filter((key) => (values as Record<string, unknown>)[key] !== undefined);
+    if (scaffoldOnly.length > 0) {
+      console.error(
+        `--${scaffoldOnly[0]} is not valid with add — name features as arguments: pimasi add ${SERVER_AXES.join(" ")}`,
+      );
+      process.exit(1);
+    }
+
+    const rawAxes = positionals[0] === "add" ? positionals.slice(1) : [];
+    const axes: ServerAxis[] = [];
+    for (const raw of rawAxes) {
+      if (!isServerAxis(raw)) {
+        console.error(
+          `Unknown feature "${raw}" — valid features: ${SERVER_AXES.join(", ")}`,
+        );
+        process.exit(1);
+      }
+      axes.push(raw);
+    }
+
+    await runAdd({
+      axes,
+      yes: isYes,
+      force: Boolean(values.force),
+      install: !values["no-install"],
+      projectDir: process.cwd(),
+    });
+    return;
+  }
 
   intro(pc.inverse(pc.cyan(" create-pimasi-app ")));
 
@@ -446,21 +525,10 @@ async function main(): Promise<void> {
   writeFileSync(join(targetDir, ".env.example"), renderEnvExample(selections));
   const readmePath = join(targetDir, "README.md");
   if (existsSync(readmePath)) injectStackBlock(readmePath, selections);
-  replacePlaceholders(targetDir, {
-    __APP_SLUG__: slug,
-    // Workspace packages and container names are renamed after the app;
-    // the exact-token
-    // needles below cannot match @pimasi/utils (the external published
-    // dependency), which must never be renamed.
-    "@pimasi/lib": `@${slug}/lib`,
-    "pimasi-server": `${slug}-server`,
-    "pimasi-web": `${slug}-web`,
-    "pimasi-mongo": `${slug}-mongo`,
-    "pimasi-redis": `${slug}-redis`,
-    "pimasi-postgres": `${slug}-postgres`,
-    pimasi_auth_token: `${slug.replaceAll("-", "_")}_auth_token`,
-  });
-  setRootPackageName(targetDir, slug);
+  replacePlaceholders(targetDir, buildReplacements(slug));
+  const cliVersion = getCliVersion();
+  finaliseRootPackage(targetDir, slug, cliVersion);
+  writeManifest(targetDir, selections, cliVersion);
   const stackParts: string[] = [frontend, database, design];
   if (cordova) stackParts.push("cordova");
   if (workers) stackParts.push("workers");
