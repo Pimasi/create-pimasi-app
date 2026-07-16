@@ -32,7 +32,7 @@ The first positional argument is the app name; `--name` overrides it. The name i
 | `--workers` / `--no-workers`       | —                      | off             | BullMQ queues + a dedicated workers process                                                             |
 | `--cache` / `--no-cache`           | —                      | on              | Redis-backed `$cache` service                                                                           |
 | `--rate-limit` / `--no-rate-limit` | —                      | on              | Redis-backed rate limiting on the auth routes                                                           |
-| `--websockets` / `--no-websockets` | —                      | off             | Realtime WebSocket push over Redis pub/sub (pulls Redis in; ships client hooks for the chosen frontend) |
+| `--websockets` / `--no-websockets` | —                      | off             | Realtime WebSocket push over the `$bus` seam (pulls Redis in; ships client hooks for the chosen frontend) |
 | `--yes`, `-y`                      | —                      | —               | Skip prompts; use flags + defaults                                                                      |
 | `--no-install`                     | —                      | —               | Skip `npm install`                                                                                      |
 | `--no-git`                         | —                      | —               | Skip `git init`                                                                                         |
@@ -50,7 +50,7 @@ Eight stack combinations (frontend × database × design), each with Cordova and
   - `--workers` (default off): BullMQ queues, a workers process, and email dispatch via queues.
   - `--cache` (default on): the Redis-backed `$cache` service.
   - `--rate-limit` (default on): the Redis-backed `RATE_LIMIT` middleware protecting the auth routes (off swaps in a no-op middleware with the same API).
-  - `--websockets` (default off): a JWT-authenticated `/ws` endpoint with Redis pub/sub fan-out, plus a `WebSocketProvider` and hooks for the chosen frontend. The infrastructure ships unmounted — the generated README explains how to wire it into the app shell.
+  - `--websockets` (default off): a JWT-authenticated `/ws` endpoint with cross-instance fan-out over `$bus` — the Redis-backed messaging seam with ephemeral broadcast channels plus durable channels with consumer groups — and a `WebSocketProvider` and hooks for the chosen frontend. The infrastructure ships unmounted — the generated README explains how to wire it into the app shell.
 
 ## How templates compose
 
@@ -58,7 +58,7 @@ Fragments live under `templates/` and are copied in order onto the target (disjo
 
 1. `base/` — root tooling, `@pimasi/lib`, and the Express server **framework** (always copied).
 2. `db/<db>/` — the server data-access overlay (`db.ts`, repo impls, migrations, `env.ts`, test helpers) plus a `package.json` deps partial.
-3. `server/*` — optional server-feature overlays onto `apps/server`, in order: `redis` (when cache, rate-limit, or websockets is on), `rate-limit`, `workers`, `cache`, then `websockets/server` (the `/ws` endpoint, the `$websocket` send service, `$pubsub`, and shared event schema).
+3. `server/*` — optional server-feature overlays onto `apps/server`, in order: `redis` (when cache, rate-limit, or websockets is on), `rate-limit`, `workers`, `cache`, then `websockets/server` (the `/ws` endpoint, the `$websocket` send service, `$bus`, and shared event schema).
 4. `frontend/<frontend>/` — `apps/web` for the chosen framework, then `websockets/<frontend>/` when WebSockets is on (the web client, provider, and hooks).
 5. `design/<design>/<frontend>/`, then `cordova/<frontend>/` when enabled — theme CSS and `components/ui/*`, the mobile shell, and their web `package.json` partials.
 

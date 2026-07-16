@@ -135,7 +135,7 @@ export function renderDockerCompose(selections: Selections): string {
           `            context: .`,
           `            dockerfile: Dockerfile.mongo`,
           `            args:`,
-          `                MONGO_VERSION: 7`,
+          `                MONGO_VERSION: 8.0.4`,
           `        container_name: ${slug}-mongo`,
           `        ports:`,
           `            - "27017:27017"`,
@@ -370,7 +370,7 @@ export function renderStackBlock(selections: Selections): string {
     `- **Workers**: ${workers ? "BullMQ (Redis-backed queues + workers process)" : "not enabled"}`,
     `- **Cache**: ${cache ? "Redis ($cache service)" : "not enabled"}`,
     `- **Rate limiting**: ${rateLimit ? "Redis-backed (auth routes)" : "not enabled"}`,
-    `- **WebSockets**: ${websockets ? "realtime push over Redis pub/sub" : "not enabled"}`,
+    `- **WebSockets**: ${websockets ? "realtime push over the Redis-backed $bus" : "not enabled"}`,
     `- **Mobile**: ${cordova ? "Cordova (Android/iOS)" : "not enabled"}`,
     ``,
   ].join("\n");

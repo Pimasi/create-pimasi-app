@@ -3,7 +3,8 @@ import { once } from "node:events";
 import { WebSocket } from "ws";
 import { getenv } from "@pimasi/utils/lib/helpers";
 import { $test } from "../test/helpers";
-import { $pubsub } from "../services/pubsub";
+import { $bus } from "../services/bus";
+import { wsDispatch } from "../services/websocket";
 import { $redis } from "../services/redis";
 
 function wsUrl(token?: string): string {
@@ -25,10 +26,11 @@ describe("websockets", () => {
     afterAll(async () => {
         sockets.forEach((socket) => socket.terminate());
         await $test.teardownSeed();
+        await $bus.close();
         await $redis.close();
     });
 
-    it("delivers an event published on ws:dispatch to the user's socket", async () => {
+    it("delivers an event published on ws.dispatch to the user's socket", async () => {
         let socket = new WebSocket(wsUrl(token));
         sockets.push(socket);
 
@@ -38,7 +40,7 @@ describe("websockets", () => {
             signal: AbortSignal.timeout(5_000),
         });
 
-        await $pubsub.publish("ws:dispatch", {
+        await wsDispatch.publish({
             user_id: userId,
             event: { type: "notification", title: "hi" },
         });

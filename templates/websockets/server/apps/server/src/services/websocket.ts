@@ -5,10 +5,12 @@ import {
     WSEvent,
     WSEventSchema,
 } from "@pimasi/lib/schemas/api/ws-events.schema";
-import { $pubsub } from "./pubsub";
+import { $bus } from "./bus";
 import { $logger } from "../utils/logger";
 
-const DISPATCH_CHANNEL = "ws:dispatch";
+export const wsDispatch = $bus.channel<{ user_id: string; event: WSEvent }>(
+    "ws.dispatch",
+);
 
 // Terminate a socket whose outbound buffer grows past this: a client that stops
 // reading must not make the server buffer without bound.
@@ -71,7 +73,7 @@ function handleDispatch(payload: unknown): void {
 
 async function subscribeWithRetry(attempt = 0): Promise<void> {
     try {
-        await $pubsub.subscribe(DISPATCH_CHANNEL, handleDispatch);
+        await wsDispatch.subscribe(handleDispatch);
         if (attempt > 0) $logger.info("ws dispatch subscription recovered");
     } catch (err) {
         let delay = Math.min(
@@ -90,7 +92,7 @@ void subscribeWithRetry();
 
 export const $websocket = {
     async send(userId: string, event: WSEvent): Promise<void> {
-        await $pubsub.publish(DISPATCH_CHANNEL, { user_id: userId, event });
+        await wsDispatch.publish({ user_id: userId, event });
     },
 
     async sendToMany(userIds: string[], event: WSEvent): Promise<void> {

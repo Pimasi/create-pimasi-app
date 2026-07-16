@@ -75,7 +75,7 @@ const AXIS_HINTS: Record<ServerAxis, string> = {
   workers: "BullMQ queues + a workers process",
   cache: "Redis-backed $cache service",
   "rate-limit": "Redis-backed rate limiting on the auth routes",
-  websockets: "realtime push over Redis pub/sub",
+  websockets: "realtime push over the Redis-backed $bus",
 };
 
 function fail(message: string): never {

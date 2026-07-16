@@ -114,7 +114,7 @@ function printHelp(): void {
       `  --cache / --no-cache          Toggle the Redis-backed $cache service`,
       `  --rate-limit / --no-rate-limit  Toggle Redis-backed rate limiting`,
       `  --websockets / --no-websockets  Toggle realtime WebSocket push`,
-      `                                  (Redis pub/sub)`,
+      `                                  (Redis-backed $bus)`,
       `  --yes, -y                     Non-interactive; use flags + defaults`,
       `  --no-install                  Skip npm install`,
       `  --no-git                      Skip git init`,
@@ -434,7 +434,7 @@ async function main(): Promise<void> {
     async () => {
       const answer = await confirm({
         message:
-          "Does the project need WebSockets? (realtime push over Redis pub/sub)",
+          "Does the project need WebSockets? (realtime push over the Redis-backed $bus)",
         initialValue: false,
       });
       ensureNotCancelled(answer);
