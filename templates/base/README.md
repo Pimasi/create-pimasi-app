@@ -403,6 +403,10 @@ Prefer: "I'm about to do X — or did you mean Y?" over guessing and explaining 
 
 **Anything you generate that is timestamped by name (migrations, ADRs, similar artefacts) is named `YYYYMMDDHHMMSS-{kebab-description}`**: run `date +%Y%m%d%H%M%S` for the prefix. See [ADR and migration naming](#adr-and-migration-naming--yyyymmddhhmmss-kebab-description). Never sequential `0001` prefixes, never unix seconds.
 
+### Check your work on request — follow the self-review skill
+
+**When the user asks you to check, verify, review, or double-check work you did in this session, follow [.claude/skills/self-review/SKILL.md](.claude/skills/self-review/SKILL.md) instead of improvising.** It rebuilds what changed from the working tree rather than your memory of it, re-derives the requirements from the user's messages, runs the project checks, and ends in a `READY` / `NOT READY` / `UNVERIFIED` report. Claude Code discovers it as a skill automatically; other agents follow the file directly.
+
 ### Keep this README in sync
 
 **This README is the canonical source of truth for project rules — keep it up to date in the same commit as the change that makes a section stale, never as a follow-up.** Humans usually notice when a doc drifts from reality; agents won't, so this rule exists to force the update.
