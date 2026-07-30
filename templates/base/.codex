@@ -1,1 +1,4 @@
-Read README.md before making changes — all project rules and AI agent rules live there (in its `## AI agent rules` section). Never add rules to this file.
+Read AGENTS.md and CONTRIBUTING.md before making changes. Project-wide
+contributor conventions belong in CONTRIBUTING.md; AI-specific behavioural
+rules belong in AGENTS.md. Keep this file as a redirect rather than adding
+rules here.

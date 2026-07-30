@@ -1,0 +1,23 @@
+# AI agent guide
+
+Rules for AI agents working on the create-pimasi-app repository. Agent entry
+points such as [CLAUDE.md](CLAUDE.md) redirect here; keep behavioural rules in
+this file rather than in the entry points.
+
+## Reviewing changes
+
+When asked to review or verify changes ("review your changes", "verify your
+work", "check the diff", "pre-merge check"), follow the `code-review` skill at
+[templates/base/.claude/skills/code-review/SKILL.md](templates/base/.claude/skills/code-review/SKILL.md),
+not an ad-hoc read-through. The skill ships inside the template, so in this
+repo follow the file directly (skill auto-discovery only picks it up when
+working under `templates/base/`). It ends in an APPROVE / REQUEST CHANGES /
+INCONCLUSIVE verdict and stays read-only; apply fixes only through its fix
+loop, on request.
+
+## Repository skills
+
+The agent guides and skills that ship with every generated app live under
+`templates/base/`. Skills in `templates/base/.claude/skills/` are discovered
+automatically only when working on files under `templates/base/`; elsewhere in
+this repo, follow the skill file directly as described above.

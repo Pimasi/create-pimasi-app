@@ -56,7 +56,7 @@ Eight stack combinations (frontend × database × design), each with Cordova and
 
 Fragments live under `templates/` and are copied in order onto the target (disjoint paths, so nothing clobbers except `package.json`, which is deep-merged):
 
-1. `base/` — root tooling, `@pimasi/lib`, the Express server **framework**, and the agents' `self-review` skill under `.claude/skills/` (always copied).
+1. `base/` — root tooling, `@pimasi/lib`, the Express server **framework**, the project guides (`README.md`, `CONTRIBUTING.md`, `AGENTS.md`, plus the `CLAUDE.md` / `.codex` / Copilot entry-point redirects), and the agents' `code-review` skill under `.claude/skills/` (always copied).
 2. `db/<db>/` — the server data-access overlay (`db.ts`, repo impls, migrations, `env.ts`, test helpers) plus a `package.json` deps partial.
 3. `server/*` — optional server-feature overlays onto `apps/server`, in order: `redis` (when cache, rate-limit, or websockets is on), `rate-limit`, `workers`, `cache`, then `websockets/server` (the `/ws` endpoint, the `$websocket` send service, `$bus`, and shared event schema).
 4. `frontend/<frontend>/` — `apps/web` for the chosen framework, then `websockets/<frontend>/` when WebSockets is on (the web client, provider, and hooks).

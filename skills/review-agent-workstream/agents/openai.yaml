@@ -1,4 +1,0 @@
-interface:
-    display_name: "Review Agent Workstream"
-    short_description: "Independent quality gate for AI-agent changes"
-    default_prompt: "Use $review-agent-workstream to independently audit this AI-generated workstream."
