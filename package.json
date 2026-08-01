@@ -1,6 +1,6 @@
 {
     "name": "create-pimasi-app",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "create-next-app-style scaffolder for full-stack PIMASI TypeScript monorepos",
     "type": "module",
     "bin": {
