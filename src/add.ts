@@ -25,6 +25,7 @@ import {
   IGNORE_ENTRIES,
   isPlainObject,
   type JsonRecord,
+  targetName,
 } from "./compose.js";
 import {
   MANIFEST_FILENAME,
@@ -132,7 +133,8 @@ function applyFile(
   ctx: ApplyContext,
 ): void {
   const srcPath = join(fragmentDir, relPath);
-  const dstPath = join(ctx.projectDir, relPath);
+  const dstRel = join(dirname(relPath), targetName(basename(relPath)));
+  const dstPath = join(ctx.projectDir, dstRel);
 
   if (basename(relPath) === "package.json" && existsSync(dstPath)) {
     mergePackageJsonAdditive(srcPath, dstPath, relPath, ctx);
@@ -144,12 +146,12 @@ function applyFile(
     if (!existsSync(dstPath)) {
       mkdirSync(dirname(dstPath), { recursive: true });
       writeFileSync(dstPath, incoming);
-      ctx.report.written.push(relPath);
+      ctx.report.written.push(dstRel);
     } else if (incoming.equals(readFileSync(dstPath))) {
-      ctx.report.identical.push(relPath);
+      ctx.report.identical.push(dstRel);
     } else {
       writeFileSync(dstPath + ".new", incoming);
-      ctx.report.conflicts.push(relPath);
+      ctx.report.conflicts.push(dstRel);
     }
     return;
   }
@@ -162,13 +164,13 @@ function applyFile(
   if (!existsSync(dstPath)) {
     mkdirSync(dirname(dstPath), { recursive: true });
     writeFileSync(dstPath, incoming);
-    ctx.report.written.push(relPath);
+    ctx.report.written.push(dstRel);
     return;
   }
 
   const onDisk = readFileSync(dstPath, "utf8");
   if (onDisk === incoming) {
-    ctx.report.identical.push(relPath);
+    ctx.report.identical.push(dstRel);
     return;
   }
 
@@ -180,13 +182,13 @@ function applyFile(
     );
     if (pristine === onDisk) {
       writeFileSync(dstPath, incoming);
-      ctx.report.written.push(relPath);
+      ctx.report.written.push(dstRel);
       return;
     }
   }
 
   writeFileSync(dstPath + ".new", incoming);
-  ctx.report.conflicts.push(relPath);
+  ctx.report.conflicts.push(dstRel);
 }
 
 function mergePackageJsonAdditive(

@@ -17,6 +17,14 @@ export const IGNORE_ENTRIES = new Set<string>([
   "__generated__",
 ]);
 
+export const RENAME_ON_COPY: Record<string, string> = {
+  _gitignore: ".gitignore",
+};
+
+export function targetName(entryName: string): string {
+  return RENAME_ON_COPY[entryName] ?? entryName;
+}
+
 export const BINARY_EXTENSIONS = new Set<string>([
   ".png",
   ".jpg",
@@ -107,7 +115,7 @@ export function copyDir(src: string, dst: string): void {
     if (IGNORE_ENTRIES.has(entry.name)) continue;
 
     const srcPath = join(src, entry.name);
-    const dstPath = join(dst, entry.name);
+    const dstPath = join(dst, targetName(entry.name));
 
     if (entry.isDirectory()) {
       copyDir(srcPath, dstPath);

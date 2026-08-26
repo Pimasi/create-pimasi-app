@@ -54,7 +54,7 @@ Eight stack combinations (frontend × database × design), each with Cordova and
 
 ## How templates compose
 
-Fragments live under `templates/` and are copied in order onto the target (disjoint paths, so nothing clobbers except `package.json`, which is deep-merged):
+Fragments live under `templates/` and are copied in order onto the target (disjoint paths, so nothing clobbers except `package.json`, which is deep-merged). One file is renamed on the way: npm strips every `.gitignore` from a published tarball, so templates store it as `_gitignore` and the CLI writes it as `.gitignore`.
 
 1. `base/` — root tooling, `@pimasi/lib`, the Express server **framework**, the project guides (`README.md`, `CONTRIBUTING.md`, `AGENTS.md`, plus the `CLAUDE.md` / `.codex` / Copilot entry-point redirects), and the agents' `code-review` skill under `.claude/skills/` (always copied).
 2. `db/<db>/` — the server data-access overlay (`db.ts`, repo impls, migrations, `env.ts`, test helpers) plus a `package.json` deps partial.

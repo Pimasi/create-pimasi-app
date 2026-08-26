@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.next/
+.turbo/
+.dumps/
+.vscode/
+.scratch/
+.playwright-mcp
+.env
+.env.cordova
+*.pem
+*.log
+*.tsbuildinfo
+.DS_Store
+routeTree.gen.ts
+__generated__/
