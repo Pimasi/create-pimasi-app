@@ -137,7 +137,12 @@ export function compose(
 ): void {
   copyDir(join(templatesDir, "base"), targetDir);
   copyDir(join(templatesDir, "db", selections.database), targetDir);
-  if (selections.cache || selections.rateLimit || selections.websockets) {
+  if (
+    selections.workers ||
+    selections.cache ||
+    selections.rateLimit ||
+    selections.websockets
+  ) {
     copyDir(join(templatesDir, "server", "redis"), targetDir);
   }
   if (selections.rateLimit) {

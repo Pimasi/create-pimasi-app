@@ -1,7 +1,5 @@
 import { Route } from "../app/route";
 import { PingResponseSchema } from "@pimasi/lib/schemas/api/ping-response.schema";
-import { $logger } from "../utils/logger";
-import { $env } from "../utils/env";
 
 export const PingRoute = Route({
     method: "get",
@@ -18,8 +16,6 @@ export const PingRoute = Route({
     },
     handler: [
         async (req, res) => {
-            $logger.debug($env);
-
             res.status(200).json({ message: "pong" });
         },
     ],

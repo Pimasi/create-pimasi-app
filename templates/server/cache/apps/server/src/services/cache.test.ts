@@ -24,7 +24,7 @@ afterAll(async () => {
 describe("$cache", () => {
     it("round-trips a value through set and get", async () => {
         let key = testKey("round-trip");
-        let value = { name: "widget", quantity: 3 };
+        let value = { name: "item", quantity: 3 };
 
         await $cache.set(key, value);
 

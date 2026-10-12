@@ -32,7 +32,7 @@ export default function SetPasswordPage() {
 
         try {
             await savePassword(password);
-            router.replace("/widgets");
+            router.replace("/");
         } catch (err) {
             setError(errorMessage(err));
         } finally {
@@ -86,7 +86,7 @@ export default function SetPasswordPage() {
 
             <button
                 type="button"
-                onClick={() => router.replace("/widgets")}
+                onClick={() => router.replace("/")}
                 className="text-muted-foreground text-sm hover:text-muted-foreground cursor-pointer"
             >
                 Skip for now

@@ -1,11 +1,14 @@
 import {
+    createNodeRedisClient,
     DefaultJobOptions,
     Job,
     JobsOptions,
     Processor,
     Queue,
+    RedisConnection,
     Worker,
 } from "bullmq";
+import { createClient } from "redis";
 import { $env } from "../utils/env";
 import { $logger } from "../utils/logger";
 import { $session } from "../app/session.service";
@@ -16,6 +19,12 @@ if (!$env.REDIS_URL) {
         "REDIS_URL must be set: BullMQ queues need a Redis connection",
     );
 }
+
+RedisConnection.clientFactory = (options) => {
+    return createNodeRedisClient(
+        createClient({ url: options.url, name: options.connectionName }),
+    );
+};
 
 export type AppQueue = {
     NAME: string;

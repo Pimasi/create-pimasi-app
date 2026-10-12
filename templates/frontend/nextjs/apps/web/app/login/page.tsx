@@ -21,7 +21,7 @@ export default function LoginPage() {
     useDocumentTitle("Log in");
 
     useEffect(() => {
-        if (auth.user) router.replace("/widgets");
+        if (auth.user) router.replace("/");
     }, [auth.user, router]);
 
     async function handleSubmit(e: React.FormEvent) {
@@ -32,7 +32,7 @@ export default function LoginPage() {
         try {
             let token = await loginWithPassword(email, password);
             await auth.login(token);
-            router.replace("/widgets");
+            router.replace("/");
         } catch (err) {
             setError(errorMessage(err, "Login failed"));
         } finally {
@@ -46,7 +46,7 @@ export default function LoginPage() {
 
         try {
             await auth.loginWithFirebase();
-            router.replace("/widgets");
+            router.replace("/");
         } catch (err: any) {
             let message = err?.code ?? err?.message ?? "Login failed";
             setError(message.replace("auth/", ""));

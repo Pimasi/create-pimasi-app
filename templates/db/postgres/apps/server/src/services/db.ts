@@ -15,19 +15,8 @@ interface UsersTable {
     roles: ColumnType<UserRoles[], string, string>;
 }
 
-interface WidgetsTable {
-    id: string;
-    user_id: string;
-    name: string;
-    description: string | null;
-    quantity: number;
-    created_at: ColumnType<Date, Date | string, Date | string>;
-    updated_at: ColumnType<Date, Date | string, Date | string>;
-}
-
 export interface Database {
     users: UsersTable;
-    widgets: WidgetsTable;
 }
 
 export const $db = new Kysely<Database>({

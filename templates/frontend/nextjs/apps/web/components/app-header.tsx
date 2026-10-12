@@ -16,12 +16,6 @@ export function AppHeader() {
             <nav className="flex items-center gap-4">
                 {loading ? null : user ? (
                     <>
-                        <Link
-                            href="/widgets"
-                            className="text-muted-foreground text-sm hover:text-foreground"
-                        >
-                            Widgets
-                        </Link>
                         <span className="text-muted-foreground text-sm">
                             {user.name}
                         </span>

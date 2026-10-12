@@ -1,7 +1,8 @@
 # Review risk lenses
 
-Use these prompts to generate hypotheses. Report nothing until it passes the
-evidence gate in [severity-and-evidence.md](severity-and-evidence.md).
+Use these prompts to generate hypotheses. A candidate becomes a finding only
+when it passes the evidence gate in
+[severity-and-evidence.md](severity-and-evidence.md).
 
 ## Core lenses for every review
 
@@ -35,6 +36,8 @@ evidence gate in [severity-and-evidence.md](severity-and-evidence.md).
   deployment sequencing, and rollback expectations.
 - Verify deleted or renamed surfaces have no remaining dynamic, string-based, or
   external references.
+- Verify comments and docs describe current behaviour and do not merely narrate
+  or rationalise an implementation.
 
 ### Test integrity
 
@@ -49,33 +52,16 @@ evidence gate in [severity-and-evidence.md](severity-and-evidence.md).
 - Confirm the test command actually includes the changed test and uses the same
   environment or artefact that will ship.
 
-### Simplicity and maintainability
-
-- Identify duplicated policy, competing sources of truth, speculative
-  abstractions, unreachable branches, and obsolete compatibility paths.
-- Check that complexity does not conceal a concrete correctness or operability
-  risk. Do not report subjective refactoring preferences.
-- Verify comments and docs describe current behaviour and do not merely narrate
-  or rationalise an implementation.
-
 ## AI-workstream failure modes
 
 - **Fabricated completion:** claimed tests, files, migrations, wiring, or cleanup
   are absent or cannot be reproduced.
 - **Hallucinated contract:** an API, option, event, command, environment variable,
   or library feature does not exist in the pinned version.
-- **Partial propagation:** one layer changed while a schema, caller, client,
-  fixture, migration, docs page, deployment file, or reverse dependency did not.
 - **Happy-path bias:** validation, permissions, recovery, cleanup, concurrency, or
   partial failure is missing.
-- **Test theatre:** assertions mirror the new implementation, mocks hide the real
-  boundary, snapshots are laundered, or checks are disabled to obtain green.
-- **Invented fallback:** made-up defaults or swallowed exceptions make unsupported
-  state appear successful.
 - **Unwired implementation:** new code is dead, registered in the wrong place, or
   shadowed by an existing path.
-- **Scope drift:** opportunistic refactors, package upgrades, mass formatting, or
-  unrelated fixes increase risk and obscure the requested change.
 - **Cargo-cult duplication:** existing helpers or policies are reimplemented with
   subtly different behaviour.
 - **Environment assumption:** validation ran against stale processes, host-only
@@ -128,7 +114,6 @@ evidence gate in [severity-and-evidence.md](severity-and-evidence.md).
 
 - Check request and response validation, optionality, units, casing, enum growth,
   error status, pagination, ordering, and compatibility.
-- Search all clients, producers, consumers, generated types, docs, and fixtures.
 - Model older clients with newer servers and newer clients with older persisted
   data when the deployment permits it.
 - Check duplicate event handling, unknown fields, schema evolution, and poison

@@ -10,9 +10,9 @@
     },
     "devDependencies": {
         "husky": "^9.1.7",
-        "lint-staged": "^17.0.8",
-        "prettier": "^3.9.4",
-        "turbo": "2.10.4"
+        "lint-staged": "^17.5.1",
+        "prettier": "^3.9.8",
+        "turbo": "2.11.2"
     },
     "lint-staged": {
         "*.{js,jsx,ts,tsx,mjs,cjs,json,md,css,scss,yml,yaml}": "prettier --write"
@@ -22,5 +22,5 @@
         "apps/server",
         "apps/shared/lib"
     ],
-    "packageManager": "npm@11.12.1"
+    "packageManager": "npm@11.19.1"
 }

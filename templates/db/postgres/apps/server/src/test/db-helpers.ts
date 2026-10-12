@@ -5,7 +5,6 @@ import { getenv } from "@pimasi/utils/lib/helpers";
 import { UserRoles } from "@pimasi/lib/values/auth";
 import type { Database } from "../services/db";
 import type { UserModel } from "../models/users";
-import type { WidgetModel } from "../models/widgets";
 
 let _db: Kysely<Database> | null = null;
 let seededUserIds: string[] = [];
@@ -51,18 +50,6 @@ function userValues(user: UserModel) {
         firebase_id: user.firebase_id ?? null,
         disabled_at: user.disabled_at ?? null,
         roles: JSON.stringify(user.roles),
-    };
-}
-
-function widgetValues(widget: WidgetModel) {
-    return {
-        id: widget.id,
-        user_id: widget.user_id,
-        name: widget.name,
-        description: widget.description,
-        quantity: widget.quantity,
-        created_at: widget.created_at,
-        updated_at: widget.updated_at,
     };
 }
 
@@ -122,52 +109,13 @@ async function users() {
     };
 }
 
-async function widgets() {
-    let conn = getDb();
-    return {
-        async findOne(filter: {
-            id: string;
-        }): Promise<WidgetModel | null> {
-            let row = await conn
-                .selectFrom("widgets")
-                .selectAll()
-                .where("id", "=", filter.id)
-                .executeTakeFirst();
-            return row ?? null;
-        },
-        async insertOne(widget: WidgetModel): Promise<void> {
-            await conn
-                .insertInto("widgets")
-                .values(widgetValues(widget))
-                .execute();
-        },
-        async insertMany(list: WidgetModel[]): Promise<void> {
-            if (list.length === 0) return;
-            await conn
-                .insertInto("widgets")
-                .values(list.map(widgetValues))
-                .execute();
-        },
-        async deleteMany(filter: { id: { $in: string[] } }): Promise<void> {
-            let ids = filter.id.$in;
-            if (ids.length === 0) return;
-            await conn.deleteFrom("widgets").where("id", "in", ids).execute();
-        },
-    };
-}
-
 export const db = {
     users,
-    widgets,
 };
 
 export async function teardownSeed(): Promise<void> {
     if (seededUserIds.length > 0) {
         let conn = getDb();
-        await conn
-            .deleteFrom("widgets")
-            .where("user_id", "in", seededUserIds)
-            .execute();
         await conn
             .deleteFrom("users")
             .where("id", "in", seededUserIds)

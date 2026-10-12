@@ -46,7 +46,7 @@ function ResetPasswordPage() {
         try {
             let result = await confirmPasswordReset(token, password);
             await auth.login(result.token);
-            navigate({ to: "/widgets" });
+            navigate({ to: "/" });
         } catch (err: any) {
             let message = errorMessage(err, "Failed to reset password");
             setError(message);

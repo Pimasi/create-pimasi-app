@@ -38,7 +38,7 @@ function SetPasswordPage() {
                 url: "/auth/set-password",
                 data: { password },
             });
-            navigate({ to: "/widgets" });
+            navigate({ to: "/" });
         } catch (err: any) {
             setError(errorMessage(err));
         } finally {
@@ -92,7 +92,7 @@ function SetPasswordPage() {
 
             <button
                 type="button"
-                onClick={() => navigate({ to: "/widgets" })}
+                onClick={() => navigate({ to: "/" })}
                 className="text-muted-foreground text-sm hover:text-muted-foreground cursor-pointer"
             >
                 Skip for now

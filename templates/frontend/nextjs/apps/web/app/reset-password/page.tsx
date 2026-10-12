@@ -45,7 +45,7 @@ export default function ResetPasswordPage() {
         try {
             let result = await confirmPasswordReset(token, password);
             await auth.login(result.token);
-            router.replace("/widgets");
+            router.replace("/");
         } catch (err) {
             setError(errorMessage(err, "Failed to reset password"));
         } finally {

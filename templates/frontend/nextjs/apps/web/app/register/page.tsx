@@ -28,7 +28,7 @@ export default function RegisterPage() {
         try {
             let token = await register(email, password);
             await auth.login(token);
-            router.replace("/widgets");
+            router.replace("/");
         } catch (err) {
             setError(errorMessage(err, "Registration failed"));
         } finally {
@@ -42,7 +42,7 @@ export default function RegisterPage() {
 
         try {
             await auth.loginWithFirebase();
-            router.replace("/widgets");
+            router.replace("/");
         } catch (err: any) {
             let message = err?.code ?? err?.message ?? "Registration failed";
             setError(message.replace("auth/", ""));

@@ -23,18 +23,18 @@
         "@pimasi/utils": "^1.1.0",
         "@sendgrid/mail": "^8.1.6",
         "@types/cors": "^2.8.19",
-        "@types/lodash": "^4.17.24",
-        "@types/node": "^26.1.1",
+        "@types/lodash": "^4.17.25",
+        "@types/node": "^26.6.2",
         "@types/yargs": "^17.0.35",
         "cors": "^2.8.6",
         "express": "^5.2.1",
-        "firebase-admin": "^14.1.0",
+        "firebase-admin": "^14.4.0",
         "jsonwebtoken": "^9.0.3",
         "lodash": "^4.18.1",
-        "tsx": "^4.23.0",
+        "tsx": "^4.23.15",
         "typescript": "^7.0.2",
         "ulid": "^3.0.2",
-        "vitest": "^4.1.10",
-        "yargs": "^17.7.3"
+        "vitest": "^5.0.1",
+        "yargs": "^18.2.0"
     }
 }

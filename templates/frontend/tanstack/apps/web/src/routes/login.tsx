@@ -24,7 +24,7 @@ function LoginPage() {
     let [emailSent, setEmailSent] = useState(false);
     let navigate = useNavigate();
     let { redirect } = Route.useSearch();
-    let redirectTo = redirect || "/widgets";
+    let redirectTo = redirect || "/";
     let auth = useAuth();
 
     useDocumentTitle("Log in");

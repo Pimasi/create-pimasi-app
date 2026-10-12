@@ -15,9 +15,9 @@ The fragments themselves are the source of truth for code; this document is the 
 7. **WebSockets** — yes/no, `--yes` default **no**: a JWT-authenticated `/ws` endpoint with a per-user socket registry and cross-instance fan-out over the `$bus` messaging seam (Redis-backed today), plus web client hooks for the chosen frontend (shipped, NOT auto-mounted). See "LOCKED websocket contracts" below.
 8. **Design system** — `shadcn` (shadcn/ui conventions: stock zinc light+dark theme, cva/clsx/tailwind-merge, `components.json`) or `bespoke` (an in-house dark palette, zero extra deps). See "LOCKED design-system contract" below.
 
-Redis is not a prompt — it ships exactly when something needs it. The `server/redis` fragment (the node-redis `$redis` client) composes when cache OR rate limiting OR websockets is on; workers carries its own connection (`bullmq` embeds `ioredis`) and needs only `REDIS_URL`. `REDIS_URL` is required at runtime when ANY of the four server axes (workers/cache/rate limiting/websockets) is on; with all four off the project has no Redis at all.
+Redis is not a prompt; it ships exactly when something needs it. The `server/redis` fragment (the node-redis `$redis` client and `redis` dependency) composes when workers OR cache OR rate limiting OR websockets is on; workers uses dedicated node-redis connections through BullMQ. `REDIS_URL` is required at runtime when ANY of the four server axes (workers/cache/rate limiting/websockets) is on; with all four off the project has no Redis at all.
 
-The Express **server is shared** across both frontends. The database choice swaps only the server's data-access layer, behind a repository interface — the auth + widget handlers never see the driver. The design choice swaps only `apps/web`'s theme CSS + `components/ui/*` implementations, behind a shared component API and token vocabulary — pages are written once. The server axes compose through two extension seams: **seam files** (base ships a working redis-free implementation of a single file behind a stable exported API, and the fragment overwrites just that file — no-op → Redis `RATE_LIMIT`; direct-send → enqueueing `handlers/email/dispatch.ts`) and **autoloaded boot hooks** (`*.boot.ts` files that `backend.ts` discovers and runs before listen — how workers mounts bull-board and websockets attaches the `/ws` upgrade handler, without either fragment overwriting `backend.ts`).
+The Express **server is shared** across both frontends. The database choice swaps only the server's data-access layer, behind a repository interface — the auth handlers never see the driver. The design choice swaps only `apps/web`'s theme CSS + `components/ui/*` implementations, behind a shared component API and token vocabulary — pages are written once. The server axes compose through two extension seams: **seam files** (base ships a working redis-free implementation of a single file behind a stable exported API, and the fragment overwrites just that file — no-op → Redis `RATE_LIMIT`; direct-send → enqueueing `handlers/email/dispatch.ts`) and **autoloaded boot hooks** (`*.boot.ts` files that `backend.ts` discovers and runs before listen — how workers mounts bull-board and websockets attaches the `/ws` upgrade handler, without either fragment overwriting `backend.ts`).
 
 ## Composition model
 
@@ -28,7 +28,7 @@ templates/
   frontend/nextjs/          # -> apps/web (+ Dockerfile.web)   [Next.js app]
   db/mongo/                 # server DB overlay + mongo/ + Dockerfile.mongo
   db/postgres/              # server DB overlay (Kysely)
-  server/redis/             # $redis node-redis client         [copied when cache OR rate limiting OR websockets]
+  server/redis/             # $redis node-redis client         [copied when workers OR cache OR rate limiting OR websockets]
   server/workers/           # BullMQ queues + workers process  [copied when workers]
   server/cache/             # $cache service over $redis       [copied when cache]
   server/rate-limit/        # Redis-backed RATE_LIMIT seam     [copied when rate limiting]
@@ -49,7 +49,7 @@ CLI compose order (later copies overlay earlier; paths are disjoint — no clobb
 
 1. copy `base/` → target
 2. copy `db/<db>/` → target
-3. server fragments, each conditional: `server/redis/` if cache OR rate limiting OR websockets; `server/workers/` if workers; `server/cache/` if cache; `server/rate-limit/` if rate limiting; `websockets/server/` if websockets
+3. server fragments, each conditional: `server/redis/` if workers OR cache OR rate limiting OR websockets; `server/workers/` if workers; `server/cache/` if cache; `server/rate-limit/` if rate limiting; `websockets/server/` if websockets
 4. copy `frontend/<frontend>/` → target; if websockets: copy `websockets/<frontend>/` → target (adds the WS client + hooks into `apps/web`)
 5. copy `design/<design>/<frontend>/` → target
 6. if cordova: copy `cordova/<frontend>/` → target
@@ -99,7 +99,7 @@ shadcn/ui v4 standard names: `background`, `foreground`, `card`, `card-foregroun
 
 ## LOCKED repository interface (the DB abstraction)
 
-The base server code depends ONLY on the surface below. **Base ships NO `models/` directory** — the DB overlay owns `apps/server/src/models/users.ts` and `models/widgets.ts` outright, and each file is self-contained: domain type + `*Repo` interface + the concrete `$users`/`$widgets` implementation for that database, together in one file. Both overlays must export the identical surface so base handlers compile against either.
+The base server code depends ONLY on the surface below. **Base ships NO `models/` directory** — the DB overlay owns `apps/server/src/models/users.ts` outright, and the file is self-contained: domain type + `*Repo` interface + the concrete `$users` implementation for that database, together in one file. Both overlays must export the identical surface so base handlers compile against either.
 
 ```ts
 // @pimasi/lib/values/auth  -> enum UserRoles { ADMIN="admin", USER="user" }
@@ -126,35 +126,6 @@ export interface UsersRepo {
   insert(user: UserModel): Promise<void>;
   update(id: string, changes: Partial<UserModel>): Promise<void>; // $set semantics; only provided keys change
 }
-
-export interface WidgetModel {
-  id: string;
-  user_id: string;
-  name: string;
-  description: string | null;
-  quantity: number;
-  created_at: Date;
-  updated_at: Date;
-}
-
-export interface WidgetUpdate {
-  name?: string;
-  description?: string | null;
-  quantity?: number;
-  updated_at: Date;
-}
-
-export interface WidgetsRepo {
-  listByUser(userId: string): Promise<WidgetModel[]>; // created_at DESC
-  findByIdForUser(id: string, userId: string): Promise<WidgetModel | null>;
-  insert(widget: WidgetModel): Promise<void>;
-  updateForUser(
-    id: string,
-    userId: string,
-    changes: WidgetUpdate,
-  ): Promise<WidgetModel | null>; // updated row or null
-  deleteForUser(id: string, userId: string): Promise<boolean>; // true if a row was deleted
-}
 ```
 
 ### Overlay model-file shape (single file: type + interface + implementation)
@@ -168,13 +139,12 @@ export const $users: UsersRepo = { ...concrete driver implementation... };
 export function normaliseEmail(email: string): string { return email.trim().toLowerCase(); }
 ```
 
-`models/widgets.ts` mirrors this: exports `WidgetModel`, `WidgetUpdate`, `WidgetsRepo`, the concrete `export const $widgets: WidgetsRepo = { ... }`, and `toWidgetResponse(model): Widget` (Dates → `.toISOString()`, drop `user_id`; `Widget` type from `@pimasi/lib/schemas/api/widget.schema`). The interface blocks are duplicated verbatim between the two DB overlays — keep them in sync with the contract above; only one overlay ships per generated project.
+The interface blocks are duplicated verbatim between the two DB overlays — keep them in sync with the contract above; only one overlay ships per generated project.
 
 ### Behavioural contracts the handlers rely on
 
 - `parse-session` loads the user via `findById` and deletes `password_hash` from the object before storing it in the ALS session — the hash never sits in request context.
 - `get-session-user` re-fetches via `findById` to surface `password_hash ?? ""` (the web app branches set-password vs change-password on it).
-- Widget mutations build a `WidgetUpdate` from the validated body plus `updated_at: new Date()`; `deleteForUser`'s boolean drives the 404.
 - `backend.ts` imports `{ runMigrations } from "./migrations"` — the DB overlay owns that module.
 - Password-reset tokens are **stateless** — no server-side token store. `handlers/auth/password-reset-token.ts` signs a JWT with `$env.JWT_SECRET` (~1 h expiry, via `jsonwebtoken`) carrying `{ type: "password_reset", user_id, pwd }`, where `pwd` is the first 16 hex chars of `sha256(password_hash ?? "")`. Verification checks the type, the expiry, and that `pwd` still matches the user's current `password_hash` — completing a reset changes the hash, so the token cannot be replayed (single-use without state). This implementation ships always; no fragment overwrites it.
 - `$jwt.verify` (`utils/jwt.ts`) **throws unless the decoded payload has `type === "user"` and a string `user_id`** — it never coerces. Reset tokens share `JWT_SECRET`, so without this check a 1-hour reset token would authenticate as a full session on HTTP (`parse-session`) and on the `/ws` upgrade. All three call sites (parse-session, rate-limit keying, ws-server) treat a throw as "no user".
@@ -203,7 +173,7 @@ Base ships an autoloaded boot-hook pattern mirroring the `*.route.ts` / `*.queue
 
 - A ws service: `connectWebSocket(token)`, `disconnectWebSocket()`, `addMessageHandler`/`removeMessageHandler`; exponential reconnect with jitter capped at 30 s; url = the API base with http→ws + `/ws?token=...`.
 - A `WebSocketProvider` + `useWebSocket` (typed `subscribe(type, handler)` returning an unsubscribe) and a `useWSEvent(type, handler)` hook.
-- **NOT mounted anywhere by default** — widget routes stay REST-only and nothing consumes the infrastructure out of the box; the generated README tells teams how to mount the provider in the app shell.
+- **NOT mounted anywhere by default** — nothing consumes the infrastructure out of the box; the generated README tells teams how to mount the provider in the app shell.
 
 ## Fragment inventory
 
@@ -211,7 +181,7 @@ Base ships an autoloaded boot-hook pattern mirroring the `*.route.ts` / `*.queue
 
 - Root: `package.json` (name `__APP_SLUG__`, `packageManager` pinned to npm, workspaces `["apps/web","apps/server","apps/shared/lib"]`, scripts build/type-check/cordova:build/prepare, husky/lint-staged/prettier/turbo devDeps), `turbo.json`, `Makefile` (the dev interface: setup/dev/dev-clean/test/type-check/format/update-deps, ends with `-include *.mk`), `.prettierrc`, `.prettierignore`, `_gitignore` (written as `.gitignore`; includes `.scratch/`), `.dockerignore`, `.husky/pre-commit`, `CLAUDE.md`, `.codex`, `.github/copilot-instructions.md`, `README.md` (the generated project's rulebook; CLI injects a Stack block), `Dockerfile.server`.
 - `apps/shared/lib/**` — `@pimasi/lib`: API schemas (`schemas/api/*.schema.ts` via `@pimasi/utils` Schema) + shared values (`values/auth.ts` UserRoles).
-- `apps/server/` framework: `src/app/**` (http-server, route factory, swagger, session ALS, cli-command, Migration factory, `boot.ts` — the boot-hook factory; see "LOCKED boot-hook contract"), `src/middleware/**`, `src/utils/**` except `env.ts`, `src/services/**` except `db.ts`, `src/handlers/**` (auth, user, email, ping, widget — all against the repo interface), `src/backend.ts`, `cli.ts`, `process.config.js` (backend process only), `src/test/helpers.ts` (http via `@pimasi/utils/lib/http` + `$test` assembly; imports `seedUser`/`db`/`teardownSeed`/`cleanup` from `./db-helpers`) + `setup.ts`, `package.json` (common server deps — no DB driver, no Redis, no BullMQ), tsconfigs, `vitest.config.ts`, `_gitignore` (written as `apps/server/.gitignore`).
+- `apps/server/` framework: `src/app/**` (http-server, route factory, swagger, session ALS, cli-command, Migration factory, `boot.ts` — the boot-hook factory; see "LOCKED boot-hook contract"), `src/middleware/**`, `src/utils/**` except `env.ts`, `src/services/**` except `db.ts`, `src/handlers/**` (auth, user, email, ping — all against the repo interface), `src/backend.ts`, `cli.ts`, `process.config.js` (backend process only), `src/test/helpers.ts` (http via `@pimasi/utils/lib/http` + `$test` assembly; imports `seedUser`/`db`/`teardownSeed`/`cleanup` from `./db-helpers`) + `setup.ts`, `package.json` (common server deps — no DB driver, no Redis, no BullMQ), tsconfigs, `vitest.config.ts`, `_gitignore` (written as `apps/server/.gitignore`).
 - Base is **redis-free**. It ships working no-Redis implementations of the seam files the server fragments target:
   - `src/middleware/rate-limit.ts` — a no-op `RATE_LIMIT(opts): RequestHandler` that calls `next()`, exporting the same `RateLimitKey` type and `RateLimitOptions` interface as the Redis version, so the six auth call sites type-check untouched either way.
   - `src/handlers/email/dispatch.ts` — `dispatchLoginEmail(...)` / `dispatchResetPasswordEmail(...)` directly await the senders in `handlers/email/login-email.ts` + `reset-password-email.ts`. Routes call ONLY the dispatch functions, never the senders or queues.
@@ -222,8 +192,8 @@ Base ships an autoloaded boot-hook pattern mirroring the `*.route.ts` / `*.queue
 ### db/mongo/ (overlay)
 
 - `apps/server/src/services/db.ts` — `$mongo` from `MongoClient($env.MONGO_URL).db($env.MONGO_DATABASE)`.
-- `apps/server/src/models/users.ts` + `models/widgets.ts` — the complete single-file models backed by `$mongo.collection(...)` (reads strip `_id` via projection; `updateForUser` uses `findOneAndUpdate` with `returnDocument: "after"`).
-- `apps/server/src/migrations/index.ts` — Mongo-advisory-lock `runMigrations()` + one concrete `YYYYMMDDHHMMSS-create-initial-indexes.ts` (users unique `{email}`, widgets `{user_id, created_at:-1}`).
+- `apps/server/src/models/users.ts` — the complete single-file model backed by `$mongo.collection(...)` (reads strip `_id` via projection).
+- `apps/server/src/migrations/index.ts` — Mongo-advisory-lock `runMigrations()` + one concrete `YYYYMMDDHHMMSS-create-initial-indexes.ts` (users unique `{email}`).
 - `apps/server/src/utils/env.ts` — common env + `MONGO_URL`/`MONGO_DATABASE` (getenv).
 - `apps/server/src/test/db-helpers.ts` — Mongo seeding/handles/teardown/cleanup.
 - `apps/server/package.json` — PARTIAL adding the `mongodb` driver.
@@ -232,13 +202,13 @@ Base ships an autoloaded boot-hook pattern mirroring the `*.route.ts` / `*.queue
 ### db/postgres/ (overlay — Kysely)
 
 - `apps/server/src/services/db.ts` — `$db: Kysely<Database>` over a `pg` Pool on `$env.DATABASE_URL`; `Database` table types (`roles` as jsonb `ColumnType`).
-- `apps/server/src/models/users.ts` / `widgets.ts` — the complete single-file models via Kysely; rows map NULL → `undefined` for `password_hash`/`firebase_id`, `disabled_at` stays `Date | null`, `roles` jsonb parses to `UserRoles[]`; `update`/`updateForUser` build partial `set(...)` objects.
-- `apps/server/src/migrations/index.ts` — `runMigrations()` via `Migrator` from `kysely/migration` (0.29+ subpath) with an in-code provider; the single migration follows the `YYYYMMDDHHMMSS-*` naming and creates `users` + `widgets` + the `(user_id, created_at desc)` index. The Migrator's lock table handles concurrent boots.
+- `apps/server/src/models/users.ts` — the complete single-file model via Kysely; rows map NULL → `undefined` for `password_hash`/`firebase_id`, `disabled_at` stays `Date | null`, `roles` jsonb parses to `UserRoles[]`; `update` builds partial `set(...)` objects.
+- `apps/server/src/migrations/index.ts` — `runMigrations()` via `Migrator` from `kysely/migration` (0.29+ subpath) with an in-code provider; the single migration follows the `YYYYMMDDHHMMSS-*` naming and creates `users`. The Migrator's lock table handles concurrent boots.
 - `apps/server/src/utils/env.ts` — common env + `DATABASE_URL` (getenv).
-- `apps/server/src/test/db-helpers.ts` — Kysely/pg seeding/handles/teardown/cleanup; `db.users()`/`db.widgets()` expose the Mongo-collection-style method surface the shared base tests call (`insertOne`, `findOne`, `deleteMany`, …).
+- `apps/server/src/test/db-helpers.ts` — Kysely/pg seeding/handles/teardown/cleanup; `db.users()` exposes the Mongo-collection-style method surface the shared base tests call (`insertOne`, `findOne`, `deleteMany`, …).
 - `apps/server/package.json` — PARTIAL adding `kysely` + `pg` (+ `@types/pg`).
 
-### server/redis/ (fragment — copied when cache OR rate limiting OR websockets is selected)
+### server/redis/ (fragment, copied when workers OR cache OR rate limiting OR websockets is selected)
 
 - `apps/server/src/services/redis.ts` — `$redis`, a node-redis client on `$env.REDIS_URL`, connecting at module load; `REDIS_URL` is validated at load so a missing value fails the boot, not the first request.
 - `apps/server/package.json` — PARTIAL adding the `redis` dep.
@@ -253,7 +223,7 @@ Base ships an autoloaded boot-hook pattern mirroring the `*.route.ts` / `*.queue
 
 - New modules: `apps/server/src/services/bull.ts` (the `$bull.Queue` factory — BullMQ queue+worker pair on `$env.REDIS_URL`, failure alerts), `src/services/queue-jobs.ts`, `src/app/queues.ts` (queue autoload/registry), `src/workers.ts` (the workers-process entrypoint), `src/handlers/auth/send-login-email.queue.ts` + `send-reset-password-email.queue.ts`, and a `bull-board.boot.ts` hook that mounts the bull-board UI through base's boot-hook seam (formerly a `backend.ts` overwrite).
 - OVERWRITES: `process.config.js` (backend + workers processes), `src/handlers/email/dispatch.ts` (dispatch enqueues on the two queues instead of sending inline). It does NOT touch `backend.ts`.
-- `apps/server/package.json` — PARTIAL adding `bullmq` + the `@bull-board/*` deps and the `dev:workers` script. `bullmq` embeds `ioredis`, so this fragment needs only `REDIS_URL` — it does NOT require `server/redis/`.
+- `apps/server/package.json`: PARTIAL adding `bullmq` + the `@bull-board/*` deps and the `dev:workers` script. BullMQ 6 uses node-redis with dedicated connections on `REDIS_URL`; the CLI composes `server/redis/` to supply the `redis` dependency.
 
 ### server/cache/ (fragment — copied when cache is selected)
 
@@ -267,7 +237,7 @@ Base ships an autoloaded boot-hook pattern mirroring the `*.route.ts` / `*.queue
 - A `*.boot.ts` hook attaching the `ws`-package WebSocket server (`/ws?token=` upgrade, JWT verification, heartbeat) through base's boot-hook seam.
 - `apps/shared/lib/src/schemas/api/ws-events.schema.ts` — the shared `WSEvent` schema + type helpers.
 - `apps/server/package.json` — PARTIAL adding `ws` + `@types/ws`.
-- Depends on `$redis` — the CLI composes `server/redis/` whenever this axis is on. The infrastructure ships unconsumed: widget routes stay REST-only; nothing dispatches events by default.
+- Depends on `$redis` — the CLI composes `server/redis/` whenever this axis is on. The infrastructure ships unconsumed: nothing dispatches events by default.
 
 ### websockets/tanstack/ + websockets/nextjs/ (overlays — copied with `frontend/<frontend>/` when websockets is selected)
 
@@ -276,12 +246,12 @@ Base ships an autoloaded boot-hook pattern mirroring the `*.route.ts` / `*.queue
 
 ### frontend/tanstack/ (overlay)
 
-- `apps/web/**` — Vite + TanStack Router SPA: file-based routes (`src/routes/`), `tsr.config.json` + `scripts/gen-routes.mjs` (route tree generated into `__generated__/`, wired into `type-check`), `$server` on `@pimasi/utils/lib/http` with `VITE_API_URL`, `$token` localStorage module, `useAuth` provider, widgets SWR hook + page. Ships no theme CSS or `components/ui/*` (design overlay provides them).
+- `apps/web/**` — Vite + TanStack Router SPA: file-based routes (`src/routes/`), `tsr.config.json` + `scripts/gen-routes.mjs` (route tree generated into `__generated__/`, wired into `type-check`), `$server` on `@pimasi/utils/lib/http` with `VITE_API_URL`, `$token` localStorage module, `useAuth` provider, landing page. Ships no theme CSS or `components/ui/*` (design overlay provides them).
 - Root `Dockerfile.web` (vite build → nginx) + `apps/web/nginx.conf`.
 
 ### frontend/nextjs/ (overlay)
 
-- `apps/web/**` — Next.js App Router app (package `pimasi-web`): pages `/`, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/set-password`, `/widgets` (protected, client components — the app is a client-rendered SPA over the Express API), `lib/server.ts` (`$server` on `@pimasi/utils/lib/http` with `NEXT_PUBLIC_API_URL` + bearer interceptor), `lib/token-storage.ts` (SSR-guarded localStorage), `hooks/use-auth`, widgets SWR hook + page, `next.config.ts` (`transpilePackages: ["@pimasi/lib"]`), `@tailwindcss/postcss` setup, `app/layout.tsx` (globals.css comes from the design overlay). `typescript` is pinned to ^6 in this workspace (Next cannot drive TS 7's compiler API; `.ncurc.json` rejects it from update-deps).
+- `apps/web/**` — Next.js App Router app (package `pimasi-web`): pages `/`, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/set-password` (client components — the app is a client-rendered SPA over the Express API), `lib/server.ts` (`$server` on `@pimasi/utils/lib/http` with `NEXT_PUBLIC_API_URL` + bearer interceptor), `lib/token-storage.ts` (SSR-guarded localStorage), `hooks/use-auth`, `next.config.ts` (`transpilePackages: ["@pimasi/lib"]`), `@tailwindcss/postcss` setup, `app/layout.tsx` (globals.css comes from the design overlay). `typescript` uses ^7; Next.js 16.3.5 passes type-check and production build with TypeScript 7.0.2.
 - Root `Dockerfile.web` for Next (build + `next start`; container port 3000; dev runs `next dev -p 5173`).
 
 ### cordova/tanstack/ + cordova/nextjs/ (overlays)
@@ -290,7 +260,7 @@ Base ships an autoloaded boot-hook pattern mirroring the `*.route.ts` / `*.queue
 
 ## The CLI (`src/`)
 
-- Node ESM TypeScript; TWO bins pointing at the same `dist/index.js`: `create-pimasi-app` (the scaffold front door — `npm create pimasi-app`) and `pimasi` (the lifecycle tool inside generated projects). `tsc` build; `tsx src/index.ts` for dev. Deps: `@clack/prompts` + `picocolors` only.
+- Node >=20.12.0 ESM TypeScript; TWO bins pointing at the same `dist/index.js`: `create-pimasi-app` (the scaffold front door — `npm create pimasi-app`) and `pimasi` (the lifecycle tool inside generated projects). `tsc` build; `tsx src/index.ts` for dev. Deps: `@clack/prompts` + `picocolors` only.
 - Wizard order: app name (kebab-validated; becomes the package scope) → frontend → cordova → database → workers → cache → rate limiting → websockets → design → target dir (refuse non-empty unless `--force`). Every prompt has a flag twin: `--name`, `--frontend`, `--db`, `--design`, `--cordova`/`--no-cordova`, `--workers`/`--no-workers`, `--cache`/`--no-cache`, `--rate-limit`/`--no-rate-limit`, `--websockets`/`--no-websockets`, `--dir`, plus `--yes` (non-interactive, defaults + flags — workers OFF, cache ON, rate limiting ON, websockets OFF), `--no-install`, `--no-git`, `--force`, `--help`.
 - Modules: `index.ts` (flags/prompts/orchestration/add-mode routing), `add.ts` (add mode — see below), `compose.ts` (recursive copy with deep-merge for overlay `package.json` files and the `_gitignore` → `.gitignore` rename, `buildReplacements(slug)` + placeholder/token replacement), `generate.ts` (docker-compose / .env.example / README Stack-block renderers + the `pimasi.json` manifest), `templates.ts` (resolve the CLI root by walking up from the running module until a directory holding both `templates/` and `DESIGN.md` is found — works from `dist/`, from source, and from a project's `node_modules`), `types.ts`.
 - `renderDockerCompose({slug, frontend, database, design, cordova, workers, cache, rateLimit, websockets})`: DB service (`<slug>-mongo` replica-set with healthcheck, or `<slug>-postgres` postgres:16 with `pg_isready`), `<slug>-redis` only when workers, cache, rate limiting, or websockets is selected, `<slug>-server` (port 4000, DB url env + `REDIS_URL` when Redis ships), `<slug>-web` (port 5173, `VITE_API_URL` or `NEXT_PUBLIC_API_URL`), with compose watch-sync blocks.
@@ -328,6 +298,6 @@ Add-mode changes additionally prove the **add-equals-generate property**: scaffo
 - **HTTP + validation**: never `ajv`, `zod`, raw `fetch`, or `axios` — `@pimasi/utils` covers all of it (`lib/http`, `lib/json-schema`). This includes test helpers and client-side wrappers.
 - British English; no AI-authored comments EVER (only humans write comments; preserve existing ones); ULID string ids everywhere (`ulid()`).
 - **TypeScript + Prettier only, never ESLint** — no eslint configs, plugins, or deps in any workspace; tsc is the correctness gate, prettier the style gate. All source is TypeScript.
-- Keep template dependency ranges at the LATEST published majors (verify with `npm view <pkg> version`); generated projects ship `make update-deps` (npm-check-updates across workspaces). Known hold-backs: `yargs` ^17 (v18 is ESM-only; the server compiles to CJS) and the Next.js web app's `typescript` ^6 (see frontend/nextjs above).
+- Keep template dependency ranges at the LATEST published majors (verify with `npm view <pkg> version`); generated projects ship `make update-deps` (npm-check-updates across workspaces).
 - Generated projects are **Docker-first and 100% dockerised** in dev: `make` targets wrap docker compose; ALL tests (every package, current and future) run inside the containers via `make test`; only type-check and formatters run on the host. README prose never hardcodes container names — `make` targets are the interface.
 - AI agents working in generated projects must not use plan mode — they write plans to a gitignored `.scratch/` folder and validate with the user first (rule lives in the base README's AI section).

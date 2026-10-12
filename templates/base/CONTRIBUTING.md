@@ -13,14 +13,14 @@ rules live in [AGENTS.md](AGENTS.md).
 
 ## Code style
 
-| Element                                            | Convention             | Example            |
-| -------------------------------------------------- | ---------------------- | ------------------ |
-| Internal variables & parameters                    | `camelCase`            | `widgetCount`      |
-| External contract fields (API, DB, queue messages) | `snake_case`           | `created_at`       |
-| Functions                                          | `camelCase`            | `createWidget()`   |
-| Types / Classes                                    | `PascalCase`           | `WidgetModel`      |
-| Top / module-level constants                       | `UPPER_SNAKE_CASE`     | `MAX_RETRIES`      |
-| File names                                         | `lowercase-kebab-case` | `create-widget.ts` |
+| Element                                            | Convention             | Example             |
+| -------------------------------------------------- | ---------------------- | ------------------- |
+| Internal variables & parameters                    | `camelCase`            | `invoiceCount`      |
+| External contract fields (API, DB, queue messages) | `snake_case`           | `created_at`        |
+| Functions                                          | `camelCase`            | `createInvoice()`   |
+| Types / Classes                                    | `PascalCase`           | `InvoiceModel`      |
+| Top / module-level constants                       | `UPPER_SNAKE_CASE`     | `MAX_RETRIES`       |
+| File names                                         | `lowercase-kebab-case` | `create-invoice.ts` |
 
 - All variables inside a function that are **not** module-level must use `let`, not `const`.
 - All module-level declarations must use `const`.
@@ -51,7 +51,7 @@ interface RateLimitOptions {
 }
 
 // GOOD — API schema, a wire contract: snake_case fields
-export const WidgetSchema = Schema.Object({
+export const InvoiceSchema = Schema.Object({
     id: Schema.String(),
     user_id: Schema.String(),
     created_at: Schema.String(),
@@ -61,7 +61,7 @@ export const WidgetSchema = Schema.Object({
 interface RateLimitOptions {
     window_seconds: number; // ❌ internal, so camelCase
 }
-export const WidgetSchema = Schema.Object({
+export const InvoiceSchema = Schema.Object({
     createdAt: Schema.String(), // ❌ wire field, so snake_case
 });
 ```
@@ -93,14 +93,14 @@ if (foo) return;
 
 - Schema field: `id: string` (typed in the model, populated at insert time).
 - Generation: `import { ulid } from "ulid"; let id = ulid();` — inline at the call site, not via a wrapper.
-- Foreign keys follow the same convention: `user_id: string`, `widget_id: string`, etc., all storing ULIDs.
+- Foreign keys follow the same convention: `user_id: string`, `invoice_id: string`, etc., all storing ULIDs.
 - Test seeders and route handlers all use `ulid()` directly — match that pattern when adding a new collection/table.
 
 Why: ULIDs are sortable by creation time, URL-safe, and human-readable, which makes them better for logs, debugging, and API surfaces. Consistency across the schema matters more than any one ID's properties — do not introduce a different ID scheme for a "special" table.
 
 ### Database — one repository interface, two implementations
 
-**The server never talks to the database driver directly.** Each file in `apps/server/src/models/` is self-contained: it defines the domain type, the `*Repo` interface, and the concrete implementation for this project's database (MongoDB or Postgres/Kysely) in one place. Handlers depend only on the exported `$users` / `$widgets` objects. To add a new persisted resource, create one `models/<resource>.ts` with its type, its `*Repo` interface, and the implementation together — do not reach for the raw client inside a handler.
+**The server never talks to the database driver directly.** Each file in `apps/server/src/models/` is self-contained: it defines the domain type, the `*Repo` interface, and the concrete implementation for this project's database (MongoDB or Postgres/Kysely) in one place. Handlers depend only on exported repository objects such as `$users` (or `$invoices` for a new invoice feature). To add a new persisted resource, create one `models/<resource>.ts` with its type, its `*Repo` interface, and the implementation together — do not reach for the raw client inside a handler.
 
 ### Schemas — `@pimasi/utils`, never Zod or ajv
 
@@ -168,8 +168,8 @@ Discriminated unions use `Schema.AnyOf([...])` with `Schema.Const("...")` discri
 import { $server } from "@/services/server"; // path may vary per frontend
 
 // GET
-let res = await $server<Widget[]>({ method: "GET", url: "/widgets" });
-let widgets = res.data;
+let res = await $server<Invoice[]>({ method: "GET", url: "/invoices" });
+let invoices = res.data;
 
 // POST
 let res = await $server<{ token: string }>({
@@ -182,12 +182,12 @@ let token = res.data.token;
 
 ```tsx
 // BAD — raw fetch with manual headers
-let res = await fetch(`${API_BASE}/widgets`, {
+let res = await fetch(`${API_BASE}/invoices`, {
     headers: { Authorization: `Bearer ${token}` },
 });
 
 // GOOD — $server(config) handles base URL and auth
-let res = await $server<Widget[]>({ method: "GET", url: "/widgets" });
+let res = await $server<Invoice[]>({ method: "GET", url: "/invoices" });
 ```
 
 The bearer token `$server` attaches comes from the web app's `token-storage` module — **never read or write `localStorage` directly for auth tokens**; the module is the single place to swap the backing store later.
@@ -203,8 +203,8 @@ The bearer token `$server` attaches comes from the web app's `token-storage` mod
 make test
 
 # GOOD — scope to a single file or pattern
-make test ARGS="src/handlers/widget/list-widgets.test.ts"
-make test ARGS="-t 'creates a widget'"
+make test ARGS="src/handlers/invoice/list-invoices.test.ts"
+make test ARGS="-t 'creates an invoice'"
 
 # BAD — running on the host
 cd apps/server && npx vitest          # ❌ wrong DB/Redis, wrong env, will mislead you

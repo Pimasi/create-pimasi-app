@@ -46,7 +46,7 @@ Prefer: "I'm about to do X — or did you mean Y?" over guessing and explaining 
 
 ## Reviewing work on request: follow the code-review skill
 
-**When the user asks you to review, verify, check, or double-check work ("check your work", "review your changes", "are you sure it's done?"), or asks for a code review of a branch, PR, or commit range, follow [.claude/skills/code-review/SKILL.md](.claude/skills/code-review/SKILL.md) instead of improvising.** It reviews the change from the artifacts rather than your memory of them: freeze the diff, re-derive intent from the user's messages and the project guides, review by risk, then back findings with mechanical evidence (new tests run against the base revision, CRAP scores, targeted differential mutation testing), ending in an `APPROVE` / `REQUEST CHANGES` / `INCONCLUSIVE` verdict. The review itself is read-only; fixes the user approves go through its fix loop (failing test first, red-green, CRAP of 8 or less, then re-review). Claude Code discovers it as a skill automatically; other agents follow the file directly.
+**When the user asks you to review, verify, check, or double-check work ("check your work", "review your changes", "are you sure it's done?"), or asks for a code review of a branch, PR, or commit range, follow [.claude/skills/code-review/SKILL.md](.claude/skills/code-review/SKILL.md) instead of improvising.** The review is read-only and ends in an `APPROVE` / `REQUEST CHANGES` / `INCONCLUSIVE` verdict; fixes go through the skill's fix loop, and only when the user asks for them. Claude Code discovers it as a skill automatically; other agents follow the file directly.
 
 ## Documentation ownership
 

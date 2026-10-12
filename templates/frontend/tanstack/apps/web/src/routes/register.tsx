@@ -28,7 +28,7 @@ function RegisterPage() {
         try {
             let token = await register(email, password);
             await auth.login(token);
-            navigate({ to: "/widgets" });
+            navigate({ to: "/" });
         } catch (err: any) {
             let message = err?.code ?? err?.message ?? "Registration failed";
             setError(message.replace("auth/", ""));
@@ -43,7 +43,7 @@ function RegisterPage() {
 
         try {
             await auth.loginWithFirebase();
-            navigate({ to: "/widgets" });
+            navigate({ to: "/" });
         } catch (err: any) {
             let message = err?.code ?? err?.message ?? "Registration failed";
             setError(message.replace("auth/", ""));

@@ -9,6 +9,7 @@ import { InternalError } from "@pimasi/utils/lib/error";
 import { globSync } from "fs";
 
 execute(async () => {
+    let cli = yargs(process.argv.slice(2));
     let _handler: Promise<any> | undefined = undefined;
 
     let fileNames = await globSync(resolve(__dirname, "./**/*.cli.{ts,js}"));
@@ -47,7 +48,7 @@ execute(async () => {
     });
 
     for (let command of sorted) {
-        yargs.command(
+        cli.command(
             command.name,
             command.description ?? command.name,
             command.options ?? {},
@@ -59,11 +60,11 @@ execute(async () => {
         $logger.debug(`loaded command: ${command.name}`);
     }
 
-    yargs.help().argv;
+    cli.help().argv;
 
     if (_handler) {
         await _handler;
     } else {
-        yargs.showHelp();
+        cli.showHelp();
     }
 });

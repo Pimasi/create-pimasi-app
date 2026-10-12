@@ -47,7 +47,7 @@ const DATABASES = ["mongo", "postgres"] as const;
 const DESIGNS = ["shadcn", "bespoke"] as const;
 const KEBAB_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-function validateName(value: string): string | undefined {
+function validateName(value: string | undefined): string | undefined {
   if (!value || value.trim().length === 0) return "Project name is required";
   if (!KEBAB_RE.test(value)) {
     return "Use kebab-case (lowercase letters, digits, single dashes)";

@@ -342,9 +342,17 @@ export async function runAdd(options: AddOptions): Promise<void> {
   };
 
   const fragments: string[] = [];
-  const redisFragBefore = before.cache || before.rateLimit || before.websockets;
-  const redisFragAfter = after.cache || after.rateLimit || after.websockets;
-  if (redisFragAfter && !redisFragBefore) {
+  const redisFragBefore =
+    before.workers || before.cache || before.rateLimit || before.websockets;
+  const redisFragAfter =
+    after.workers || after.cache || after.rateLimit || after.websockets;
+  if (
+    redisFragAfter &&
+    (!redisFragBefore ||
+      !existsSync(
+        join(options.projectDir, "apps/server/src/services/redis.ts"),
+      ))
+  ) {
     fragments.push(join("server", "redis"));
   }
   if (after.rateLimit && !before.rateLimit) {
