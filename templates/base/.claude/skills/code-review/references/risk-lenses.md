@@ -49,6 +49,11 @@ when it passes the evidence gate in
   accept any call, or bypass the production boundary under review.
 - Detect weakened assertions, broad snapshot replacement, skipped tests, retries
   that hide flakes, and coverage that executes without verifying.
+- Check that each new or changed test stands alone: its own setup creates the
+  state it asserts on and its teardown removes it, each fixture sets every
+  uniquely indexed field to a value no other test inserts, and nothing rests
+  on test order, the wall clock, randomness, a timer an earlier case left
+  pending, or a background job in the running stack.
 - Confirm the test command actually includes the changed test and uses the same
   environment or artefact that will ship.
 

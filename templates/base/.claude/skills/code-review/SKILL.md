@@ -1,12 +1,7 @@
 ---
 name: code-review
-description: "Independent review of a completed code change (uncommitted work,
-  branch, commit range or PR) by a fresh read-only reviewer. Use when asked to
-  review or check finished work or a diff, to audit an implementation, or for
-  a pre-merge check; not for a question about one function or behaviour.
-  Returns APPROVE, REQUEST CHANGES or INCONCLUSIVE with fail-first and
-  targeted mutation evidence. Defines the test-first fix loop and the
-  single-reviewer re-review."
+description: "Independent review of a completed code change (uncommitted work, branch, commit range or PR) by a fresh read-only reviewer. Use when asked to review or check finished work or a diff, to audit an implementation, or for a pre-merge check; not for a question about one function or behaviour. Returns APPROVE, REQUEST CHANGES or INCONCLUSIVE with fail-first and targeted mutation evidence. Defines the test-first fix loop and the single-reviewer re-review."
+argument-hint: "[--fix] [--comment] [<pr#>|<branch>|<range>|<path>]"
 ---
 
 # Code review
@@ -16,6 +11,28 @@ verdict. The change may be another agent's work or your own from this
 session. When it is your own, your memory of writing it is a lead, not
 evidence: re-derive scope, intent, and correctness from the artifacts. Arrange
 independent passes as described below.
+
+## Request options
+
+A request can name a target for step 1 (a PR number, branch, commit range
+or path) and two follow-ups, in plain words or as text typed after the
+command, which some tools add below this text as a final `ARGUMENTS:`
+line. The agent that received the request acts on the follow-ups once it
+has relayed the verdict; they stay out of the reviewer's prompt.
+
+- **Fix afterwards** ("and fix what it finds", typed `--fix`): the user has
+  asked for one round of the fix loop below when the verdict is
+  `REQUEST CHANGES`. Run it, relay the re-review's verdict and stop. With any
+  other verdict there is nothing to fix; say so.
+- **Post to the pull request** ("comment on the PR", typed `--comment`):
+  only when asked, and only when the target is a pull or merge request.
+  Before any fixing, post the report as written as one comment, never as
+  an approving or blocking review. With no tool that can post, or no such
+  target, post nothing and say so.
+- **A depth, a findings limit or an unlisted flag** (`low`, `high`,
+  "quick", `--max-findings`): not options. This review has one depth, set
+  by the change in step 3, and reports every verified finding. Before
+  starting, say in one line what was ignored.
 
 ## Who runs this
 
@@ -144,8 +161,8 @@ sessions or sub-agents on the reviewer's side, never the author's. They only
 read: the lead runs each check in step 4 once. Each returns candidates most
 severe first, with a `path:line`, a one-line claim and the input or state
 that triggers it, plus one line for each area checked and found sound, and
-leaves the evidence gate to the lead. The lead merges candidates that point
-at the same line or mechanism and verifies each one personally before
+leaves the evidence gate to the lead. The lead merges candidates that
+share a root cause and verifies each one personally before
 reporting it. A lead that cannot start sub-reviewers makes every pass itself
 and says so in the report.
 
@@ -202,8 +219,11 @@ Apply the evidence gate in
 to every candidate: introduced by this scope, reachable under a supported or
 realistically hostile scenario, concrete impact, supported by direct evidence
 or complete code-path reasoning, one root cause rather than a duplicate
-symptom. Discard what fails the gate; put material unresolved uncertainty
-under residual risk.
+symptom. Discard what fails the gate, never for rarity alone: a supported
+trigger you can state passes reachability however seldom it fires. Give a
+candidate you traced and could neither confirm nor refute one line under
+residual risk with what would settle it; put other material unresolved
+uncertainty there too.
 
 Report with [references/report-template.md](references/report-template.md).
 Lead with one verdict (**APPROVE**, **REQUEST CHANGES**, or
@@ -219,13 +239,22 @@ still disclose scope, commands run, validation gaps, and residual risk.
 
 ## Fix loop (only when the user asks for fixes)
 
+When the user asked for fixes together with the review, every P0 to P2
+finding is accepted, with one exception: a finding the report marks as a
+defect in the plan or brief, or whose direction leaves a choice to the
+user, goes back to the user and is not fixed unasked.
+List each finding left unfixed, whatever the reason, in the re-review prompt
+beside the accepted findings, with that reason: the re-review reports it as
+open, at its original severity, until the reviewer closes it.
+
 Apply this discipline to every accepted finding:
 
 1. Write the test first: an acceptance-level scenario for behavior visible
    from outside, a unit test otherwise. Confirm it fails for the right
    reason. Ask before modifying or deleting any existing acceptance scenario.
 2. Fix red-green: write just enough production code to pass, repeated until
-   the new tests pass.
+   the new tests pass. Then run every test step 4 names for the fix diff, not
+   only the new ones.
 3. Kill the specific mutation survivors that motivated the finding,
    following the fix-loop part of
    [references/mutation-testing.md](references/mutation-testing.md). Prove

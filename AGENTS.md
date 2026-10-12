@@ -21,3 +21,10 @@ The agent guides and skills that ship with every generated app live under
 `templates/base/`. Skills in `templates/base/.claude/skills/` are discovered
 automatically only when working on files under `templates/base/`; elsewhere in
 this repo, follow the skill file directly as described above.
+
+The review skill keeps the name `code-review` (the owner's decision,
+12-10-2026). In a generated app that makes it take the place of Claude Code's
+bundled `/code-review`, so a typed `/code-review`, and any review Claude
+routes to a skill, runs the gate; the bundled review stays reachable as a
+typed `/review`. The alternative considered was renaming it `review-pass`, as
+in astrosiege, which would have left the bundled command in place.

@@ -98,8 +98,10 @@ Apply in this order:
 
 1. Choose `REQUEST CHANGES` for any verified P0, P1, or P2 finding, or a
    change-attributable failure of a required check.
-2. Otherwise choose `INCONCLUSIVE` when scope is unreliable or a material
-   elevated-risk claim cannot be validated.
+2. Otherwise choose `INCONCLUSIVE` when scope is unreliable, a material
+   elevated-risk claim cannot be validated, tests exist for the changed
+   behaviour and none of them ran against the reviewed tree, or none of the
+   project's checks ran at all.
 3. Otherwise choose `APPROVE`. P3 findings may remain explicitly non-blocking.
 
 Approval is positive evidence that review depth and validation were proportionate;

@@ -46,7 +46,7 @@ Prefer: "I'm about to do X — or did you mean Y?" over guessing and explaining 
 
 ## Reviewing work on request: follow the code-review skill
 
-**When the user asks you to review, verify, check, or double-check work ("check your work", "review your changes", "are you sure it's done?"), or asks for a code review of a branch, PR, or commit range, follow [.claude/skills/code-review/SKILL.md](.claude/skills/code-review/SKILL.md) instead of improvising.** The review is read-only and ends in an `APPROVE` / `REQUEST CHANGES` / `INCONCLUSIVE` verdict; fixes go through the skill's fix loop, and only when the user asks for them. Claude Code discovers it as a skill automatically; other agents follow the file directly.
+**When the user asks you to review, verify, check, or double-check work ("check your work", "review your changes", "are you sure it's done?"), or asks for a code review of a branch, PR, or commit range, follow [.claude/skills/code-review/SKILL.md](.claude/skills/code-review/SKILL.md) instead of improvising.** The review is read-only and ends in an `APPROVE` / `REQUEST CHANGES` / `INCONCLUSIVE` verdict; fixes go through the skill's fix loop, and only when the user asks for them. Claude Code discovers it as a skill automatically; other agents follow the file directly. In Claude Code this skill takes the place of the bundled review of the same name: `/code-review` and a plain-words review request both run this gate. The bundled diff review, with its own effort levels and flags, still runs under its other name, `/review` (for example `/review low`), and only when a person types it.
 
 ## Documentation ownership
 
