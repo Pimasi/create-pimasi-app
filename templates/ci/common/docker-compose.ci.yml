@@ -1,0 +1,11 @@
+services:
+    pimasi-server:
+        ports: !reset []
+        environment:
+            PM2_INSTANCES: "1"
+        healthcheck:
+            test: ["CMD", "curl", "-fsS", "http://localhost:4000/ping"]
+            interval: 2s
+            timeout: 3s
+            retries: 150
+            start_period: 5s

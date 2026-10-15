@@ -7,5 +7,7 @@ describe("GET /ping", () => {
 
         expect(res.status).toBe(200);
         expect(res.data.message).toBe("pong");
+        expect(res.data.version).toBeTypeOf("string");
+        expect(res.data.commit).toBeTypeOf("string");
     });
 });

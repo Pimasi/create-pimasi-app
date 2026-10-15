@@ -1,0 +1,175 @@
+#!/bin/sh
+set -eu
+api=$STATE/api
+method=GET
+output=
+body=
+url=
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -X) method=$2; shift 2 ;;
+        -o) output=$2; shift 2 ;;
+        -H | -w | --connect-timeout | --max-time) shift 2 ;;
+        --data-binary) body=${2#@}; shift 2 ;;
+        -sS) shift ;;
+        *) url=$1; shift ;;
+    esac
+done
+printf '%s %s\n' "$method" "$url" >>"$api/calls"
+if [ "$ADAPTER_HOST" = github ]; then
+    path=${url#*/repos/Acme/Shop}
+else
+    path=${url#*/projects/12}
+fi
+case "$method $path" in
+    'POST https://api.github.test/graphql')
+        environment=$(jq -r '.variables.environments[0] // ""' "$body")
+        jq --arg environment "$environment" '[.[] | select($environment == "" or .environment == $environment)] | reverse | map({id: ("D_" + (.id | tostring)), commitOid: .sha, task, environment, description, payload: (.payload | if . == null then null else tojson end), latestStatus: {state: (.status | ascii_upcase)}}) | {data: {repository: {deployments: {nodes: ., pageInfo: {hasNextPage: false, endCursor: null}}}}}' "$api/deployments.json" >"$output"
+        printf 200
+        ;;
+    'GET /deployments?'*)
+        environment=
+        case "$path" in
+            *environment=*) environment=$(printf '%s' "$path" | sed 's/.*environment=\([^&]*\).*/\1/') ;;
+        esac
+        jq --arg environment "$environment" '[.[] | select($environment == "" or .environment.name == $environment)] | reverse' "$api/deployments.json" >"$output"
+        printf 200
+        ;;
+    'POST /deployments')
+        jq --slurpfile body "$body" --arg host "$ADAPTER_HOST" '. + [($body[0] + {id: (length + 1)} | if $host == "github" then . + {sha: .ref, status: "pending"} else . + {environment: {name: .environment}, deployable: null} end)]' "$api/deployments.json" >"$api/next"
+        mv "$api/next" "$api/deployments.json"
+        jq '.[-1]' "$api/deployments.json" >"$output"
+        if [ "$ADAPTER_HOST" = gitlab ] && [ -n "${FAIL_FINALISE:-}" ]; then
+            jq '.[-1].status = "running"' "$api/deployments.json" >"$api/next"
+            mv "$api/next" "$api/deployments.json"
+            jq '.[-1]' "$api/deployments.json" >"$output"
+        fi
+        printf 201
+        ;;
+    'POST /deployments/'*'/statuses')
+        if [ -n "${FAIL_FINALISE:-}" ]; then
+            printf '{}\n' >"$output"
+            printf 403
+            exit 0
+        fi
+        id=${path#/deployments/}
+        id=${id%%/*}
+        jq --argjson id "$id" 'map(if .id == $id then .status = "success" else . end)' "$api/deployments.json" >"$api/next"
+        mv "$api/next" "$api/deployments.json"
+        printf '{"state":"success"}\n' >"$output"
+        printf 201
+        ;;
+    'GET /tags?'* | 'GET /repository/tags?'*)
+        : >"$api/tag-list"
+        for file in "$api/tags/"*; do
+            [ -f "$file" ] || continue
+            jq -nc --arg name "${file##*/}" --arg sha "$(cat "$file")" '{name: $name, commit: {sha: $sha, id: $sha}}' >>"$api/tag-list"
+        done
+        jq -s . "$api/tag-list" >"$output"
+        printf 200
+        ;;
+    'GET /git/ref/tags/'* | 'GET /repository/tags/'*)
+        tag=${path##*/}
+        if [ -f "$api/tags/$tag" ]; then
+            jq -n --arg sha "$(cat "$api/tags/$tag")" '{object: {type: "commit", sha: $sha}, commit: {id: $sha}}' >"$output"
+            printf 200
+        else
+            printf '{}\n' >"$output"
+            printf 404
+        fi
+        ;;
+    'GET /git/ref/heads/'*)
+        branch=${path#/git/ref/heads/}
+        found=$(git ls-remote --heads origin "refs/heads/$branch" | awk -v ref="refs/heads/$branch" '$2 == ref { print $1 }')
+        if [ -n "$found" ]; then
+            jq -n --arg ref "refs/heads/$branch" --arg sha "$found" '{ref: $ref, object: {type: "commit", sha: $sha}}' >"$output"
+            printf 200
+        else
+            printf '{}\n' >"$output"
+            printf 404
+        fi
+        ;;
+    'PATCH /git/refs/heads/'*)
+        branch=${path#/git/refs/heads/}
+        if [ -n "${REFUSE_BRANCH:-}" ] || [ "$(jq -r .force "$body")" != true ]; then
+            printf '{}\n' >"$output"
+            printf 403
+            exit 0
+        fi
+        git push -q -f origin "$(jq -r .sha "$body"):refs/heads/$branch"
+        jq -n --arg ref "refs/heads/$branch" --arg sha "$(jq -r .sha "$body")" '{ref: $ref, object: {type: "commit", sha: $sha}}' >"$output"
+        printf 200
+        ;;
+    'POST /git/refs')
+        case "$(jq -r .ref "$body")" in
+            refs/heads/*)
+                branch=$(jq -r '.ref | sub("^refs/heads/"; "")' "$body")
+                if [ -n "${REFUSE_BRANCH:-}" ]; then
+                    printf '{}\n' >"$output"
+                    printf 403
+                    exit 0
+                fi
+                if [ -n "$(git ls-remote --heads origin "refs/heads/$branch")" ]; then
+                    printf '{}\n' >"$output"
+                    printf 422
+                    exit 0
+                fi
+                git push -q origin "$(jq -r .sha "$body"):refs/heads/$branch"
+                jq -n --arg ref "refs/heads/$branch" --arg sha "$(jq -r .sha "$body")" '{ref: $ref, object: {type: "commit", sha: $sha}}' >"$output"
+                printf 201
+                exit 0
+                ;;
+        esac
+        if [ -n "${REFUSE_RELEASE:-}" ]; then
+            printf '{}\n' >"$output"
+            printf 403
+            exit 0
+        fi
+        tag=$(jq -r '.ref | sub("^refs/tags/"; "")' "$body")
+        if [ -n "${RACE_TAG_SHA:-}" ] && [ ! -f "$api/raced" ]; then
+            printf '%s\n' "$RACE_TAG_SHA" >"$api/tags/$tag"
+            : >"$api/raced"
+        fi
+        if [ -f "$api/tags/$tag" ]; then
+            printf '{}\n' >"$output"
+            printf 422
+            exit 0
+        fi
+        jq -r .sha "$body" >"$api/tags/$tag"
+        printf '{}\n' >"$output"
+        printf 201
+        ;;
+    'GET /releases/'*)
+        tag=${path##*/}
+        if [ -f "$api/releases/$tag.md" ]; then
+            jq -n --arg tag "$tag" '{tag_name: $tag}' >"$output"
+            printf 200
+        else
+            printf '{}\n' >"$output"
+            printf 404
+        fi
+        ;;
+    'POST /releases')
+        if [ -n "${REFUSE_RELEASE:-}" ]; then
+            printf '{}\n' >"$output"
+            printf 403
+            exit 0
+        fi
+        tag=$(jq -r .tag_name "$body")
+        if [ -n "${RACE_TAG_SHA:-}" ] && [ ! -f "$api/raced" ]; then
+            printf '%s\n' "$RACE_TAG_SHA" >"$api/tags/$tag"
+            printf 'Racing release\n' >"$api/releases/$tag.md"
+            : >"$api/raced"
+        fi
+        if [ -f "$api/releases/$tag.md" ]; then
+            printf '{}\n' >"$output"
+            printf 409
+            exit 0
+        fi
+        [ -f "$api/tags/$tag" ] || jq -r '.ref // .target_commitish' "$body" >"$api/tags/$tag"
+        jq -r '.body // .description' "$body" >"$api/releases/$tag.md"
+        jq '{tag_name}' "$body" >"$output"
+        printf 201
+        ;;
+    *) printf 'unexpected API request: %s %s\n' "$method" "$path" >&2; exit 9 ;;
+esac

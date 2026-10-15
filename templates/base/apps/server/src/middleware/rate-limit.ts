@@ -1,9 +1,7 @@
 import { Request, RequestHandler } from "express";
 
 export type RateLimitKey =
-    | "ip"
-    | "auth-token"
-    | ((req: Request) => string | null | undefined);
+    "ip" | "auth-token" | ((req: Request) => string | null | undefined);
 
 export interface RateLimitOptions {
     bucket: string;

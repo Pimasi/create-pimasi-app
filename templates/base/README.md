@@ -51,6 +51,8 @@ make update-deps # bump every dependency to latest (npm-check-updates) + install
 
 After `make setup`, fill in real `.env` values (ask teammates for secrets). On the Mongo variant, extra `mongo-seed` targets exist for seeding the database.
 
+Commit `package-lock.json` after setup and dependency changes. The Dockerfiles use `npm ci`, which requires a lockfile matching the workspace manifests.
+
 > The Docker dev stack covers the **browser** app only. Packaging the SPA as an Android/iOS app is a separate, **host-side** flow — see [Mobile builds (Cordova)](#mobile-builds-cordova).
 
 ## Build & commands
@@ -65,6 +67,38 @@ After `make setup`, fill in real `.env` values (ask teammates for secrets). On t
 make type-check             # turbo run type-check across all workspaces
 make format                 # prettier across the repo
 ```
+
+## Runtime configuration
+
+Set `PM2_INSTANCES` in the server container environment to choose the production process count. It defaults to `1` per process entry, including the workers entry when enabled.
+
+The production images accept `APP_VERSION` and `GIT_SHA` build arguments for their OCI version and revision labels. The server also exposes these values through its environment, defaulting to `0.0.0` and `unknown`; `GET /ping` returns `{"message":"pong","version":"<string>","commit":"<string>"}`. Web images use the arguments only for labels, without including them in the browser bundle.
+
+`GET /ping` is liveness and checks no dependencies. `GET /ready` is readiness: it returns `200` with `{"status":"ready","checks":{"database":"ok"}}` when the database answers, also checking `redis` when enabled. A failed or timed-out check gives `503`, `status: "unavailable"` and `"failed"` for that check, with details logged only on the server. Checks run in parallel with a two-second timeout each. Both endpoints are unauthenticated; a dependency outage leaves `/ping` healthy.
+
+Use `/ping` for Kubernetes liveness and startup probes, and `/ready` for readiness:
+
+```yaml
+livenessProbe:
+    httpGet:
+        path: /ping
+        port: 4000
+startupProbe:
+    httpGet:
+        path: /ping
+        port: 4000
+    failureThreshold: 30
+    periodSeconds: 10
+readinessProbe:
+    httpGet:
+        path: /ready
+        port: 4000
+    timeoutSeconds: 3
+```
+
+Add dependency checks with `registerReadinessCheck(name, asyncCheck)` from `apps/server/src/app/readiness.ts` in a boot hook. A check resolves when ready or throws when unavailable; an empty registry is ready.
+
+When CI and releases are enabled (`ci-github` or `ci-gitlab` in add mode), [RELEASE.md](RELEASE.md) owns the gate, release commands, deployment seam and operator setup. Start there before your first release.
 
 ## Getting started on a new project
 
@@ -122,6 +156,7 @@ Re-run `npm run cordova:build` after every web change — `cordova build` packag
 - [Contributor guide](CONTRIBUTING.md): code style, Docker, backend/frontend
   conventions, testing, and documentation conventions for every contributor,
   human or automated.
+- [Release guide](RELEASE.md), when present: CI, releases and deployment.
 - [Agent guide](AGENTS.md): rules that apply specifically to AI agents. The
   agent entry points (`CLAUDE.md`, `.codex`, `.github/copilot-instructions.md`)
   are redirects to it and carry no rules of their own.

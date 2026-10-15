@@ -3,7 +3,8 @@
 Start with the [root README](README.md) for setup, architecture, and common
 commands. This guide is the canonical source for conventions that apply to
 every contributor, whether human or automated. Agent-specific behavioural
-rules live in [AGENTS.md](AGENTS.md).
+rules live in [AGENTS.md](AGENTS.md). When CI and releases are enabled,
+[RELEASE.md](RELEASE.md) owns their setup, operation and deployment contract.
 
 ## Docker conventions
 
@@ -28,6 +29,8 @@ rules live in [AGENTS.md](AGENTS.md).
 ### Tooling — TypeScript + Prettier, never ESLint
 
 **All source is TypeScript** — no `.js`/`.jsx` app code. The correctness gate is the compiler (`make type-check`); the style gate is Prettier (`make format`, enforced by the pre-commit hook). **Never add ESLint** — no configs, no plugins, no `eslint-*` dependencies, in any workspace. If a rule feels missing, it belongs in the type system or in this guide, not in a linter.
+
+Release tooling under `scripts/release/`, when present, is the explicit source-language exception: POSIX `sh`, with POSIX awk for deterministic notes.
 
 ### Language — British English
 
@@ -229,8 +232,9 @@ If `make test` fails because the stack isn't running, bring it up first (`make d
 **When a change alters how the project is built, run, deployed, or decided, update the owning document in the same commit — never as a follow-up.** Humans usually notice when a doc drifts from reality; agents won't, so treat the doc update as part of "done".
 
 - A design decision worth recording → add an ADR under `docs/adr/` (see [ADR and migration naming](#adr-and-migration-naming--yyyymmddhhmmss-kebab-description)).
-- A new or changed app under `apps/`, top-level directory, root config file, `make` target, required env var, or build/release flow → update the [README](README.md) (Architecture, Project structure, and command sections).
+- A new or changed app under `apps/`, top-level directory, root config file, `make` target, required env var, or build flow → update the [README](README.md) (Architecture, Project structure, and command sections).
 - A new, changed, or removed coding/design convention, testing rule, or documentation workflow → update the matching section of this guide.
+- A CI, release or deployment change, when enabled → update [RELEASE.md](RELEASE.md).
 - A behavioural rule for AI agents → update [AGENTS.md](AGENTS.md).
 
 Pure internal changes (refactors, dependency bumps, bug fixes, tests, route additions, or schema tweaks that don't change a public surface) do **not** need a doc update. When in doubt, ask: "would a teammate cloning the repo today be misled by what the docs say?" If yes, update the owning document.

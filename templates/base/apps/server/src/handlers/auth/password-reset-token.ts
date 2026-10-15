@@ -10,9 +10,7 @@ function passwordFingerprint(passwordHash: string | undefined): string {
         .slice(0, 16);
 }
 
-export async function issuePasswordResetToken(
-    userId: string,
-): Promise<string> {
+export async function issuePasswordResetToken(userId: string): Promise<string> {
     let user = await $users.findById(userId);
 
     let payload = {

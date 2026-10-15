@@ -7,6 +7,7 @@ COPY apps/web/package.json apps/web/
 RUN npm ci
 COPY apps/shared/lib/ apps/shared/lib/
 COPY apps/web/ apps/web/
+WORKDIR /app/apps/web
 
 # --- Production build ---
 FROM dev AS build
@@ -25,3 +26,7 @@ ENV NODE_ENV=production
 WORKDIR /app/apps/web
 EXPOSE 3000
 CMD ["npm", "run", "start"]
+ARG APP_VERSION=0.0.0
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.version=${APP_VERSION}
+LABEL org.opencontainers.image.revision=${GIT_SHA}

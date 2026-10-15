@@ -1,0 +1,142 @@
+name: "Promote"
+
+on:
+    workflow_call:
+        inputs:
+            sha:
+                required: true
+                type: string
+            environment:
+                required: true
+                type: string
+            publish:
+                required: true
+                type: boolean
+            gated_sha:
+                default: ""
+                type: string
+            gated_pipeline_id:
+                default: ""
+                type: string
+
+permissions:
+    contents: read
+
+concurrency:
+    group: release-${{ inputs.environment }}
+    cancel-in-progress: false
+    queue: max
+
+jobs:
+    release:
+        if: ${{ !inputs.publish }}
+        runs-on: ubuntu-latest
+        environment:
+            name: ${{ inputs.environment }}
+            deployment: false
+        permissions:
+            contents: write
+            deployments: write
+            packages: write
+            id-token: write
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  ref: "main"
+                  fetch-depth: 0
+            - id: promote
+              run: |
+                  printf 'started=true\n' >> "$GITHUB_OUTPUT"
+                  if ! jq -ne '[env.RELEASE_DEPLOY_SECRETS_JSON, env.RELEASE_DEPLOY_VARS_JSON] | all((. // "" | utf8bytelength) <= 122880)' >/dev/null; then
+                      printf '%s\n' 'release: deployment secrets and variables JSON must each be at most 120 KiB (122880 UTF-8 bytes); reduce the host context or fetch larger configuration inside deploy.sh' >&2
+                      exit 1
+                  fi
+                  make release
+              env:
+                  GITHUB_TOKEN: ${{ github.token }}
+                  RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+                  RELEASE_ENV: ${{ inputs.environment }}
+                  RELEASE_SHA: ${{ inputs.sha }}
+                  RELEASE_TRIGGER: ${{ inputs.gated_sha != '' && 'merge' || 'manual' }}
+                  RELEASE_PIPELINE_SHA: ${{ github.sha }}
+                  RELEASE_GATED_SHA: ${{ inputs.gated_sha }}
+                  RELEASE_PIPELINE_ID: ${{ github.run_id }}
+                  RELEASE_GATED_PIPELINE_ID: ${{ inputs.gated_pipeline_id }}
+                  RELEASE_EXPECT_PUBLISH: ${{ inputs.publish }}
+                  RELEASE_DEPLOY_SECRETS_JSON: ${{ toJSON(secrets) }}
+                  RELEASE_DEPLOY_VARS_JSON: ${{ toJSON(vars) }}
+                  RELEASE_WEBHOOK_URL: ${{ secrets.RELEASE_WEBHOOK_URL }}
+                  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+                  ANTHROPIC_BASE_URL: ${{ vars.ANTHROPIC_BASE_URL }}
+                  RELEASE_NOTES_MODEL: ${{ vars.RELEASE_NOTES_MODEL }}
+            - if: failure() && steps.promote.outcome == 'failure' && steps.promote.outputs.started != 'true'
+              run: |
+                  printf '%s\n' 'release: the promotion step could not start; deployment secrets and variables JSON must each be at most 120 KiB (122880 UTF-8 bytes)' 'Linux rejects a single environment string around 128 KiB; reduce the host context or fetch larger configuration inside deploy.sh' >&2
+                  exit 1
+            - if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: "release-${{ inputs.environment }}"
+                  include-hidden-files: true
+                  path: |
+                      .release/outcome.env
+                      .release/notes.md
+                      .release/summary.md
+    publish:
+        if: inputs.publish
+        runs-on: ubuntu-latest
+        environment:
+            name: ${{ inputs.environment }}
+            deployment: false
+        concurrency:
+            group: release
+            cancel-in-progress: false
+            queue: max
+        permissions:
+            contents: write
+            deployments: write
+            packages: write
+            id-token: write
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  ref: "main"
+                  fetch-depth: 0
+            - id: promote
+              run: |
+                  printf 'started=true\n' >> "$GITHUB_OUTPUT"
+                  if ! jq -ne '[env.RELEASE_DEPLOY_SECRETS_JSON, env.RELEASE_DEPLOY_VARS_JSON] | all((. // "" | utf8bytelength) <= 122880)' >/dev/null; then
+                      printf '%s\n' 'release: deployment secrets and variables JSON must each be at most 120 KiB (122880 UTF-8 bytes); reduce the host context or fetch larger configuration inside deploy.sh' >&2
+                      exit 1
+                  fi
+                  make release
+              env:
+                  GITHUB_TOKEN: ${{ github.token }}
+                  RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+                  RELEASE_ENV: ${{ inputs.environment }}
+                  RELEASE_SHA: ${{ inputs.sha }}
+                  RELEASE_TRIGGER: ${{ inputs.gated_sha != '' && 'merge' || 'manual' }}
+                  RELEASE_PIPELINE_SHA: ${{ github.sha }}
+                  RELEASE_GATED_SHA: ${{ inputs.gated_sha }}
+                  RELEASE_PIPELINE_ID: ${{ github.run_id }}
+                  RELEASE_GATED_PIPELINE_ID: ${{ inputs.gated_pipeline_id }}
+                  RELEASE_EXPECT_PUBLISH: ${{ inputs.publish }}
+                  RELEASE_DEPLOY_SECRETS_JSON: ${{ toJSON(secrets) }}
+                  RELEASE_DEPLOY_VARS_JSON: ${{ toJSON(vars) }}
+                  RELEASE_WEBHOOK_URL: ${{ secrets.RELEASE_WEBHOOK_URL }}
+                  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+                  ANTHROPIC_BASE_URL: ${{ vars.ANTHROPIC_BASE_URL }}
+                  RELEASE_NOTES_MODEL: ${{ vars.RELEASE_NOTES_MODEL }}
+            - if: failure() && steps.promote.outcome == 'failure' && steps.promote.outputs.started != 'true'
+              run: |
+                  printf '%s\n' 'release: the promotion step could not start; deployment secrets and variables JSON must each be at most 120 KiB (122880 UTF-8 bytes)' 'Linux rejects a single environment string around 128 KiB; reduce the host context or fetch larger configuration inside deploy.sh' >&2
+                  exit 1
+            - if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: "release-${{ inputs.environment }}"
+                  include-hidden-files: true
+                  path: |
+                      .release/outcome.env
+                      .release/notes.md
+                      .release/summary.md

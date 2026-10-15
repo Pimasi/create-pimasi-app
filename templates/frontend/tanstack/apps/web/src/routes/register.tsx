@@ -107,10 +107,7 @@ function RegisterPage() {
 
             <p className="text-muted-foreground text-sm">
                 Already have an account?{" "}
-                <Link
-                    to="/login"
-                    className="text-primary hover:underline"
-                >
+                <Link to="/login" className="text-primary hover:underline">
                     Log in
                 </Link>
             </p>

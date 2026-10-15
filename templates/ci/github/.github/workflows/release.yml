@@ -1,0 +1,68 @@
+name: "Release"
+run-name: "Promote ${{ inputs.sha }} to ${{ inputs.environment }}"
+
+on:
+    workflow_dispatch:
+        inputs:
+            sha:
+                description: "Full 40-character main or hotfix commit to promote"
+                required: true
+                type: string
+            environment:
+                description: "Environment to promote to"
+                required: true
+                default: "production"
+                type: string
+
+permissions:
+    contents: read
+
+jobs:
+    prepare:
+        runs-on: ubuntu-latest
+        outputs:
+            publish: ${{ steps.environment.outputs.publish }}
+        steps:
+            - name: Require main
+              run: |
+                  if [ "$GITHUB_REF" != refs/heads/main ]; then
+                      printf '%s\n' 'run the release workflow from main' >&2
+                      exit 3
+                  fi
+            - uses: actions/checkout@v5
+              with:
+                  ref: "main"
+            - id: environment
+              env:
+                  RELEASE_ENV: ${{ inputs.environment }}
+              run: |
+                  plan=$(sh scripts/release/environment-plan.sh "$RELEASE_ENV")
+                  printf 'publish=%s\n' "$(printf '%s' "$plan" | jq -r .publish)" >> "$GITHUB_OUTPUT"
+    release:
+        needs: prepare
+        if: needs.prepare.outputs.publish == 'false'
+        permissions:
+            contents: write
+            deployments: write
+            packages: write
+            id-token: write
+        uses: ./.github/workflows/promote.yml
+        with:
+            sha: ${{ inputs.sha }}
+            environment: ${{ inputs.environment }}
+            publish: false
+        secrets: inherit
+    publish:
+        needs: prepare
+        if: needs.prepare.outputs.publish == 'true'
+        permissions:
+            contents: write
+            deployments: write
+            packages: write
+            id-token: write
+        uses: ./.github/workflows/promote.yml
+        with:
+            sha: ${{ inputs.sha }}
+            environment: ${{ inputs.environment }}
+            publish: true
+        secrets: inherit

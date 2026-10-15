@@ -1,0 +1,10 @@
+services:
+    pimasi-server:
+        image: "${RELEASE_IMAGE_SERVER}"
+        build: !reset null
+        command: !reset null
+        develop: !reset null
+        volumes: !reset []
+        ports: !reset []
+        environment:
+            PM2_INSTANCES: "1"

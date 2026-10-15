@@ -6,6 +6,7 @@ Before changing the repository, read:
 2. [CONTRIBUTING.md](CONTRIBUTING.md) for code, testing, and documentation
    conventions that apply to every contributor.
 3. This file for rules specific to AI agents.
+4. [RELEASE.md](RELEASE.md), when present, before changing CI, releases or deployment.
 
 Agent entry points such as [CLAUDE.md](CLAUDE.md), [.codex](.codex), and
 [.github/copilot-instructions.md](.github/copilot-instructions.md) redirect
@@ -57,6 +58,7 @@ Keep each document within its intended scope:
 | `README.md`       | Onboarding, quick start, architecture, common commands, and navigation  |
 | `CONTRIBUTING.md` | Code style, backend/frontend conventions, testing, and docs conventions |
 | `AGENTS.md`       | Behaviour that applies specifically to AI agents                        |
+| `RELEASE.md`      | CI, releases and deployment, when enabled                               |
 | `docs/adr/`       | Architecture Decision Records                                           |
 
 **When asked to add, update, or remove a rule, edit the owning document — never the agent entry-point files** (`CLAUDE.md`, `.codex`, `.github/copilot-instructions.md`), which stay as redirects. Update the owning document in the same change that makes it stale; the when-to-update detail lives in the contributor guide's [Documentation](CONTRIBUTING.md#documentation) section, and its requirements are not duplicated here.

@@ -54,28 +54,22 @@ function authStore() {
         setUser(null);
     }, []);
 
-    let loginWithFirebase = useCallback(
-        async () => {
-            let result = await $firebaseClient.signInWithPopup();
-            let token = await loginWithFirebaseToken(
-                await result.user.getIdToken(),
-            );
-            await login(token);
-        },
-        [login],
-    );
+    let loginWithFirebase = useCallback(async () => {
+        let result = await $firebaseClient.signInWithPopup();
+        let token = await loginWithFirebaseToken(
+            await result.user.getIdToken(),
+        );
+        await login(token);
+    }, [login]);
 
-    let loginWithEmailLink = useCallback(
-        async () => {
-            let result = await $firebaseClient.signInWithEmailLink();
-            if (!result) throw new Error("No result from email login");
-            let token = await loginWithFirebaseToken(
-                await result.user.getIdToken(),
-            );
-            await login(token);
-        },
-        [login],
-    );
+    let loginWithEmailLink = useCallback(async () => {
+        let result = await $firebaseClient.signInWithEmailLink();
+        if (!result) throw new Error("No result from email login");
+        let token = await loginWithFirebaseToken(
+            await result.user.getIdToken(),
+        );
+        await login(token);
+    }, [login]);
 
     return {
         user,

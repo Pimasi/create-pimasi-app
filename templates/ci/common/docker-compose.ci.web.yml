@@ -1,0 +1,3 @@
+services:
+    pimasi-web:
+        ports: !reset []

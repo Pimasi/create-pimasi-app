@@ -1,0 +1,64 @@
+spec:
+    inputs:
+        environment:
+        sha:
+        publish:
+            options: ["true", "false"]
+        trigger:
+            options: ["manual", "merge"]
+        pipeline_sha:
+        pipeline_id:
+        gated_sha:
+        gated_pipeline_id:
+        release_runner_tags:
+            type: array
+            default: []
+---
+default:
+    image: docker:29-cli
+    services:
+        - docker:29-dind
+    before_script:
+        - apk add --no-cache make curl jq git tzdata
+
+variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    FF_NETWORK_PER_BUILD: "true"
+    GIT_DEPTH: "0"
+    RELEASE_ENV: $[[ inputs.environment ]]
+    RELEASE_SHA: $[[ inputs.sha ]]
+    RELEASE_EXPECT_PUBLISH: $[[ inputs.publish ]]
+    RELEASE_TRIGGER: $[[ inputs.trigger ]]
+    RELEASE_PIPELINE_SHA: $[[ inputs.pipeline_sha ]]
+    RELEASE_PIPELINE_ID: $[[ inputs.pipeline_id ]]
+    RELEASE_GATED_SHA: $[[ inputs.gated_sha ]]
+    RELEASE_GATED_PIPELINE_ID: $[[ inputs.gated_pipeline_id ]]
+    RELEASE_ID_TOKEN_AUDIENCE: $CI_SERVER_URL
+
+.promotion:
+    tags: $[[ inputs.release_runner_tags ]]
+    environment:
+        name: $RELEASE_ENV
+        action: start
+    id_tokens:
+        RELEASE_ID_TOKEN:
+            aud: $RELEASE_ID_TOKEN_AUDIENCE
+    script:
+        - make release-from-main
+    artifacts:
+        when: always
+        paths:
+            - .release/outcome.env
+            - .release/notes.md
+            - .release/summary.md
+
+release:
+    extends: .promotion
+    rules:
+        - if: $RELEASE_EXPECT_PUBLISH == "false"
+
+publish:
+    extends: .promotion
+    rules:
+        - if: $RELEASE_EXPECT_PUBLISH == "true"
+    resource_group: release

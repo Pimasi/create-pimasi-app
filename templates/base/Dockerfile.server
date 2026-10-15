@@ -21,3 +21,10 @@ ENV NODE_ENV=production
 WORKDIR /app
 RUN npm prune --omit=dev
 WORKDIR /app/apps/server
+ARG APP_VERSION=0.0.0
+ARG GIT_SHA=unknown
+ENV APP_VERSION=${APP_VERSION}
+ENV GIT_SHA=${GIT_SHA}
+LABEL org.opencontainers.image.version=${APP_VERSION}
+LABEL org.opencontainers.image.revision=${GIT_SHA}
+CMD ["npm", "run", "start"]
