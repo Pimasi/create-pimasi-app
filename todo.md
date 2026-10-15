@@ -1,4 +1,4 @@
-Work carried over from the trunk-based releases PRD, so it survives the merge. The PRD is [docs/20261012135301-prd-trunk-based-releases.md](docs/20261012135301-prd-trunk-based-releases.md); Simon set these items aside on 14-10-2026.
+Work carried over from the trunk-based releases work, so it survives the merge. The release system is described in [docs/releases.md](docs/releases.md); Simon set these items aside on 14 and 15-10-2026.
 
 **Build PRD.** The release PRD keeps the build Docker-only; its scope is "the versioning and management of version and environments". The rest, in Simon's words, is "the scope of another [PRD] to then increase the scope of the build".
 
@@ -37,6 +37,7 @@ flowchart LR
 - **Release-branch merge requests:** each gets a push and a merge request pipeline.
 - **A release page whose tag is missing:** stays "publication incomplete", and a retry cannot fix it.
 - **`env add` and `env remove` use `gh` or `glab`:** Simon dislikes both CLIs (15-10-2026); keep or drop?
+- **Release shell tests in every app:** about 60 files ship and run in `make test` and the gate; keep them here only?
 
 **Other follow-ups.**
 

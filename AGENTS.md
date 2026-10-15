@@ -15,6 +15,14 @@ working under `templates/base/`). It ends in an APPROVE / REQUEST CHANGES /
 INCONCLUSIVE verdict and stays read-only; apply fixes only through its fix
 loop, on request.
 
+## Release tooling
+
+Before changing anything under `templates/ci/`, the `--ci` axis,
+`add ci-<host>` or `pimasi env` in `src/`, read
+[docs/releases.md](docs/releases.md). It explains how releases work, the
+owner's decisions that must not be undone without him, and how to test the
+shell tooling.
+
 ## Repository skills
 
 The agent guides and skills that ship with every generated app live under
