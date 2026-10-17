@@ -91,6 +91,35 @@ case "$verb" in
         [ "$status" -eq 0 ] || exit "$status"
         jq -e --arg tag "$2" '.tag_name == $tag' "$hostTmp/response" >/dev/null || exit 2
         ;;
+    env-page-read | env-page-write)
+        pageTag=changelog/$2
+        pageEncoded=$(jq -rn --arg value "$pageTag" '$value | @uri')
+        status=0
+        request GET "/releases/$pageEncoded" || status=$?
+        [ "$status" -ne 2 ] || fail "could not read the changelog for $2"
+        if [ "$status" -eq 0 ]; then
+            jq -e --arg tag "$pageTag" '.tag_name == $tag and (.description | type == "string")' "$hostTmp/response" >/dev/null || fail "invalid changelog for $2"
+        fi
+        if [ "$verb" = env-page-read ]; then
+            [ "$status" -eq 0 ] || exit 0
+            jq -rj .description "$hostTmp/response"
+            exit 0
+        fi
+        if [ "$status" -eq 0 ]; then
+            jq -nc --arg name "__APP_SLUG__ changelog ($2)" --rawfile description "$3" '{name: $name, description: $description}' >"$hostTmp/body"
+            request PUT "/releases/$pageEncoded" --data-binary "@$hostTmp/body" || fail "could not update the changelog for $2"
+        else
+            found=$(tagRead "$pageTag") || fail "could not read tag $pageTag"
+            pageSha=${found:-$4}
+            jq -nc --arg tag "$pageTag" --arg sha "$pageSha" --arg name "__APP_SLUG__ changelog ($2)" --rawfile description "$3" \
+                '{tag_name: $tag, ref: $sha, name: $name, description: $description}' >"$hostTmp/body"
+            status=0
+            request POST /releases --data-binary "@$hostTmp/body" || status=$?
+            found=$(tagRead "$pageTag") || fail "could not verify tag $pageTag after publication"
+            [ "$status" -eq 0 ] || fail "could not create the changelog for $2"
+            [ "$found" = "$pageSha" ] || fail "tag $pageTag is not at $pageSha"
+        fi
+        ;;
     tag-list)
         page=1
         : >"$hostTmp/tags"

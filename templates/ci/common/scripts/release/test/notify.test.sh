@@ -51,6 +51,29 @@ record "succeeded, publication incomplete" publication
 notify
 contains "publication failure has an honest outcome" "Outcome: succeeded, publication incomplete" "$(cat "$STATE/summary")"
 contains "publication failure explains the retry" "Promote this SHA again to retry publication." "$(cat "$STATE/summary")"
+for host in github gitlab; do
+    record "succeeded, publication incomplete" publication
+    printf "publication_failure='page'\n" >>"$RELEASE_OUT/outcome.env"
+    GITLAB_CI=false
+    [ "$host" != gitlab ] || GITLAB_CI=true
+    export GITLAB_CI
+    notify
+    summary=$(cat "$STATE/summary")
+    contains "$host page failure names the missed update" 'The environment page was not updated.' "$summary"
+    contains "$host page failure names the artefact for manual addition" 'job artefact `env-page.md`, to add by hand' "$summary"
+    lacks "$host page failure never advises a same-SHA retry" 'Promote this SHA again' "$summary"
+    if [ "$host" = gitlab ]; then
+        contains "GitLab page failure names protected-tag permissions" "The promotion's user may not create \`changelog/*\` tags" "$summary"
+    else
+        contains "GitHub page failure names a host error" 'The host reported an error.' "$summary"
+    fi
+done
+unset GITLAB_CI
+record "succeeded, publication incomplete" publication
+printf "publication_failure='both'\n" >>"$RELEASE_OUT/outcome.env"
+notify
+contains "both failures limit the same-SHA retry to version publication" 'Promote this SHA again to retry version publication only.' "$(cat "$STATE/summary")"
+contains "both failures retain manual recovery for the page" 'job artefact `env-page.md`, to add by hand' "$(cat "$STATE/summary")"
 record failed health
 notify
 contains "failure names the stage" "Promotion to production failed at health" "$(cat "$STATE/summary")"

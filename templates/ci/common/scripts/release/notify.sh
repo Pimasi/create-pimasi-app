@@ -42,7 +42,19 @@ case "$outcome" in
         meaning="The health check passed and the live record now points at this commit."
         if [ "$outcome" = "succeeded, publication incomplete" ]; then
             title="$title; publication incomplete"
-            meaning="$meaning Promote this SHA again to retry publication."
+            case "${publication_failure:-version}" in
+                version) meaning="$meaning Promote this SHA again to retry publication." ;;
+                both) meaning="$meaning Promote this SHA again to retry version publication only." ;;
+            esac
+            case "${publication_failure:-version}" in
+                page | both)
+                    pageCause="The host reported an error."
+                    if [ "${GITLAB_CI:-}" = true ]; then
+                        pageCause="The promotion's user may not create \`changelog/*\` tags, or the host reported an error."
+                    fi
+                    meaning="$meaning The environment page was not updated. $pageCause The entry is kept in the job artefact \`env-page.md\`, to add by hand."
+                    ;;
+            esac
         fi
         ;;
     rejected)

@@ -30,4 +30,5 @@ check "no promotion job is limited to reading contents" 0 "$(printf '%s\n' "$pro
 check "both promotion steps receive resolved secrets after attachment" 2 "$(printf '%s\n' "$promotion" | grep -c '^                  RELEASE_DEPLOY_SECRETS_JSON:' || true)"
 check "both promotion steps receive resolved variables after attachment" 2 "$(printf '%s\n' "$promotion" | grep -c '^                  RELEASE_DEPLOY_VARS_JSON:' || true)"
 check "both promotion steps read RELEASE_TOKEN after attachment, so an environment secret reaches them" 2 "$(printf '%s\n' "$promotion" | grep -c '^                  RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}$' || true)"
+check "both promotion jobs retain the environment page artefact" 2 "$(printf '%s\n' "$promotion" | grep -c '^                      .release/env-page.md$' || true)"
 done_testing

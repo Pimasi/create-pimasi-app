@@ -17,7 +17,7 @@ The version and tag are `YYYY-MM-DD.N` for a normal release and `YYYY-MM-DD.N.P`
 The date is the day the release runs in `RELEASE_TIMEZONE`, set once in `scripts/release/config.sh` and defaulting to `UTC`.
 `N` starts at 1 each day, is always written and has no leading zero.
 A commit receives its version when first promoted to an environment with `RELEASE_PUBLISH=true` and keeps it for life, including on redeploy and rollback.
-Promotions to non-publishing environments such as `dev` assign no version or tag; their builds are labelled `sha-<first 12 characters of SHA>`.
+Promotions to non-publishing environments such as `dev` assign no version or version tag; their builds are labelled `sha-<first 12 characters of SHA>`.
 When `uat` creates versions, its first promotion of a commit assigns the version and a later production promotion of that commit reuses it.
 Tags record publication; deployment records tell the pipeline what was last healthy.
 
@@ -43,9 +43,11 @@ flowchart TD
     Build --> Deploy[Run deploy.sh]
     Deploy --> Health{Does ping report the SHA and ready return 200?}
     Health -->|yes| Record[Write and finalise live record, move env/name]
-    Record --> Publish[Publish tag, release and release branch when enabled]
-    Publish -->|complete or disabled| Success[Succeeded]
+    Record --> Publish[Publish version tag, release and release branch when enabled]
+    Publish --> Changelog[Update environment changelog unless same]
+    Changelog -->|complete or skipped| Success[Succeeded]
     Publish -->|refused| Incomplete[Succeeded, publication incomplete]
+    Changelog -->|read or write refused| Incomplete
     Notes -->|error| Failed[Failed at stage: baseline unchanged]
     Gate -->|error| Failed
     Build -->|error| Failed
@@ -126,7 +128,7 @@ glab ci run --branch main --input "sha:$SHA" --input "environment:production"
 
 Read the outcome and notes in the job log.
 GitHub also appends them to the run summary.
-Both hosts retain `.release/outcome.env`, `.release/notes.md` and `.release/summary.md` as artefacts.
+Both hosts retain `.release/outcome.env`, `.release/notes.md`, `.release/summary.md` and `.release/env-page.md` when assembled as job artefacts.
 
 ### Roll back
 
@@ -197,7 +199,7 @@ A commit that carries a hotfix tag `T.P` stays a hotfix of `T` without its branc
 Commits brought into the release branch by a merge, off its first-parent line, are refused before anything builds; so is a side commit merged into `main`: promote the main commit that contains it.
 A commit on `main`'s first-parent chain is always a normal release, including the merge commit that brings a hotfix back.
 Branches named `hotfix/` have no meaning.
-Only Maintainers push to release branches and run releases; host setup below protects `release/*`, `env/*` and the version tags for them and says what that protection cannot stop.
+Only Maintainers push to release branches and run releases; host setup below protects `release/*`, `env/*`, `changelog/*` tags and the version tags for them and says what that protection cannot stop.
 The prefix is `RELEASE_BRANCH_PREFIX` in `scripts/release/config.sh` and defaults to `release/`; on GitLab, change the `release/` patterns in `.gitlab-ci.yml` to match.
 
 The hotfixes of one version form one line: push the second fix on top of the first, so `T.2` contains `T.1`.
@@ -283,7 +285,7 @@ On GitHub, `ci.yml` runs only for pull requests and `main`, so these writes star
 ## Outcomes and what to do
 
 - **Succeeded:** read the notes and confirm the reported target matches your intent.
-- **Publication incomplete:** repair host permissions, then promote the same SHA again.
+- **Publication incomplete:** repair host permissions, then promote the same SHA again for version publication. For an environment page failure, add the missed entry by hand from the job artefact `env-page.md`; a same redeploy adds no entry, and it does not appear later on its own.
 - **Failed:** inspect the named stage, fix its cause, then retry.
 - **Rejected:** correct the inputs or fetch full history before retrying.
 - **Skipped:** a merge promotion was superseded by a newer main commit or a newer live record. Nothing was built or deployed; the last healthy record remains.
@@ -316,7 +318,18 @@ When no title is available, notes use the commit subject.
 - **Hotfix:** names the base release and lists branch commits, grouped by type; readable original main hashes are informational.
 - **After a hotfix:** uses its base release for main ancestry, lists the hotfix subjects as a reminder to confirm them on main, and identifies hotfix removal on rollback.
 
-Only an environment with `RELEASE_PUBLISH=true` creates version tags, release objects and release branches.
+Every environment, publishing or not, has one living release page titled `<app> changelog (<environment>)` on tag `changelog/<environment>`.
+That tag is created at the commit of the first page write, or adopted unchanged if it already exists without a release, and never moved; use the live record or `env/<name>` to see what is live.
+After the live record and version publication, inside the existing environment lock, a range, rollback, no-baseline or hotfix promotion prepends one entry using that promotion's plain notes.
+A same redeploy adds none, including a redeploy of a hotfix.
+Each entry starts `## <version> · DD-MM-YYYY HH:MM UTC`; an environment that does not publish uses `sha-<first 12 characters>` instead of the version, even when another environment has versioned that commit.
+Entries are newest first. If the new entry alone exceeds 125,000 characters on GitHub or 1,000,000 on GitLab, its commit list is cut to fit, ending with `(N more commits not shown)`. The body keeps the newest 100 entries, then drops the oldest until it fits the host limit.
+A refused page read or write ends `succeeded, publication incomplete` without failing the deploy or changing its healthy record.
+The record already advanced, so a same-SHA retry cannot replay the missed entry, and it does not appear later on its own.
+The summary says the environment page was not updated and names the likely cause: on GitLab, the promotion's user may not create `changelog/*` tags; otherwise a host error.
+The plain notes are retained as `.release/notes-plain.md`; the job artefact `.release/env-page.md` keeps the entry to add by hand when the page cannot be updated.
+
+Only an environment with `RELEASE_PUBLISH=true` creates version tags, version release objects and release branches.
 Production enables it by default.
 A version counts as published only when its release object exists.
 A matching tag is reused; a tag at another commit is refused and never moved.
@@ -336,11 +349,11 @@ GitLab's [deployment creation API](https://docs.gitlab.com/api/deployments/#crea
 If GitLab refuses publication before creating the tag, the live image still reports the assigned version, but a later commit can reuse that counter and a retry on another day can receive a different version.
 Once the tag exists, GitLab reuses it even if the release object still needs publication.
 GitLab also cannot recover the version's first publishing environment from deployment metadata, so an unpublished version promoted through a different publishing environment uses that environment's original notes range.
-An existing release object keeps its notes unchanged on both hosts.
+An existing version release object keeps its first notes unchanged on both hosts.
 
-Release objects retain deterministic notes so retries reproduce them exactly.
+Version release objects and environment changelog entries use deterministic plain notes.
 The optional model rewrite affects the promotion summary and webhook.
-It never changes which commits a published version covers.
+It never changes version pages or environment changelog entries.
 
 ## The deploy seam
 
@@ -542,7 +555,7 @@ The pipeline API cannot prove the trigger relationship or that the gate complete
 An unreadable or mismatched upstream identity clears the proof and runs the full gate; manual promotions always run the full gate.
 Admission, prerequisites, deployment, health checks and publication rules remain in force.
 Notes always start from the destination's own live record.
-Only `RELEASE_PUBLISH=true` creates a tag and release.
+Only `RELEASE_PUBLISH=true` creates a version tag and version release; every environment has its own changelog release page.
 A prerequisite is an admission check: linking environments does not waive the requirement that the prerequisite already has an accepted record.
 
 Newer main commits supersede waiting merge promotions.
@@ -566,7 +579,7 @@ Read the recorded outcome as well as the pipeline status: an orchestration or ar
 
 Put public build values in the files; keep secrets in the host or a manager as described above.
 
-- `RELEASE_PUBLISH`: only `true` enables version tags, release objects and release branches after a healthy promotion. Production enables it by default; environments added by the CLI disable it unless added with `--publish` or a yes to the version question.
+- `RELEASE_PUBLISH`: only `true` enables version tags, version release objects and release branches after a healthy promotion; environment changelog pages apply to every environment. Production enables it by default; environments added by the CLI disable it unless added with `--publish` or a yes to the version question.
 - `RELEASE_ON_MERGE`: only `true` opts into promotion after the main push gate passes. It is absent from fresh scaffolds; any environment can set it by hand.
 - `RELEASE_HEALTH_URL`: the API base URL without `/ping` or `/ready`. Empty uses the runner smoke check; a real target also needs the deploy seam connected.
 - `RELEASE_AFTER`: an optional prerequisite environment. The candidate SHA must equal or be an ancestor of its finalised live record. Empty or absent means independent.
@@ -604,7 +617,7 @@ Set `RELEASE_TIMEZONE` once in `scripts/release/config.sh` to `UTC` or an IANA t
 The date comes from the release run, not the commit timestamp.
 The scripts accept `RELEASE_NOW` as an epoch in seconds for deterministic tests around midnight; leave it unset for normal releases.
 
-Only Maintainers push `release/*`, `env/*` and version tags and run releases, and only the pipeline moves `env/*`; nobody pushes it by hand.
+Only Maintainers push `release/*`, `env/*`, `changelog/*` tags and version tags and run releases, and only the pipeline moves `env/*`; nobody pushes it by hand.
 Each host section below says how to protect them and what that protection cannot stop; [Maintainer-only releases](#maintainer-only-releases) gives the steps in each host's web interface.
 
 ### GitHub
@@ -612,7 +625,7 @@ Each host section below says how to protect them and what that protection cannot
 Protect `main` and require the `gate` check before merging.
 Enable squash merging and set the default squash commit message to the pull request title.
 Enable Actions and allow the release jobs to write contents, deployments and packages.
-Both release jobs, publishing or not, hold `contents: write`, because every healthy promotion moves `env/<name>`.
+Both release jobs, publishing or not, hold `contents: write`, because healthy promotions move `env/<name>` and update their environment changelog.
 The gate needs read access to contents and deployments.
 
 The default `GITHUB_TOKEN` handles deployment records and GHCR pushes.
@@ -622,7 +635,7 @@ For that case, add `RELEASE_TOKEN` with repository contents and workflow write r
 Projects that use hotfixes, roll back, or promote commits other than the tip should configure this optional token, because those branch writes point at commits that are not the tip of `main`.
 With `RELEASE_MAINTAINERS_ONLY=true` in `scripts/release/config.sh`, the scaffold's default, the token is required and [Maintainer-only releases](#maintainer-only-releases) gives the setup.
 `RELEASE_TOKEN` is a secret on each environment, created by a Maintainer for this repository only or issued by a GitHub App, and each environment accepts deployments only from `main`.
-Rules on `release/*`, `env/*` and the version tags block creating, updating, force-pushing and deleting them; only the Maintain and Admin roles and the token's identity bypass them, and the default token is never exempt.
+Rules on `release/*`, `env/*`, `changelog/*` tags and the version tags block creating, updating, force-pushing and deleting them; only the Maintain and Admin roles and the token's identity bypass them, and the default token is never exempt.
 A promotion without the token is rejected before anything builds.
 Only Maintainers, Admins and the pipeline, through the environment's token, can then write those refs: a workflow on any other branch can neither read the token nor write them with the default token.
 A workflow on `main` can attach to an environment and read its token, so have a Maintainer review changes to `.github/workflows/` before they merge.
@@ -656,20 +669,20 @@ Protect `main`, require a successful merge request pipeline, and require squash 
 Set the squash commit message template to `%{title}`.
 The recommended setting on both hosts is squash merging with the request title; default merge commits are also handled by reading their request title from the body.
 The job uses `CI_JOB_TOKEN` for deployments and releases, and the provided registry credentials for image pushes.
-Protect the version tags with a protected tag rule matching them, such as `20*`, that allows Maintainers to create them.
+Protect the version tags with a protected tag rule matching them, such as `20*`, and protect `changelog/*` tags, with creation allowed for Maintainers on both rules. A promotion started by a user who may not create `changelog/*` tags cannot create or update that environment's release page.
 
 Release and environment branches are pushed to `origin` with the job token, so turn on the project's [job-token setting](https://docs.gitlab.com/ci/jobs/ci_job_token/) that allows Git push requests to the repository; it is off by default and generally available from GitLab 18.4.
 The push acts with the rights of the person who started the pipeline: whoever pressed ▶, ran the form or merged.
-With job-token pushes on, a Maintainer who runs or retries a job on a branch they have not reviewed lends that branch's YAML their push rights, including to `release/*`, `env/*` and the version tags.
+With job-token pushes on, a Maintainer who runs or retries a job on a branch they have not reviewed lends that branch's YAML their push rights, including to `release/*`, `env/*`, `changelog/*` tags and the version tags.
 Protect `release/*` with push and merge allowed for Maintainers and force push off, and `env/*` with push allowed for Maintainers and force push on, because rollbacks move it backwards.
 The person who presses ▶ or runs the form must therefore be a Maintainer.
 Every such push carries `-o ci.skip`, so it starts no pipeline.
 Without these rights, environment moves end as warnings and release branches leave publication incomplete until the next promotion of that version.
 
 Protection does not stop a deployment.
-On GitLab Free, someone below Maintainer who can run pipelines on `main` can still press ▶ or use the form: the promotion gates, builds, deploys and writes the live record, then the host refuses its tag, release branch and `env/*` writes.
-A publishing environment then ends `succeeded, publication incomplete` and a non-publishing one succeeds with an environment-branch warning; a Maintainer promotes the same SHA again to complete them.
-Deployment on merge runs as the person who merged, so after a Developer's merge an on-merge environment such as `dev` deploys and records while `env/dev` stays behind, with a warning, until a run started by a Maintainer moves it.
+On GitLab Free, someone below Maintainer who can run pipelines on `main` can still press ▶ or use the form: the promotion gates, builds, deploys and writes the live record, then the host refuses its version tag, release branch and `env/*` writes, and refuses both creation and updates of its environment changelog page.
+A publishing environment then ends `succeeded, publication incomplete`; a non-publishing promotion also ends that way if its changelog page write is refused, alongside the environment-branch warning. A Maintainer can retry version publication with the same SHA; the missed changelog entry does not appear later on its own and must be added by hand from the job artefact `env-page.md`.
+Deployment on merge runs as the person who merged, so after a Developer's merge an on-merge environment such as `dev` deploys and records while `env/dev` stays behind, with a warning, until a run started by a Maintainer moves it; its changelog page cannot be created or updated, leaving publication incomplete.
 On GitLab Premium, protected environments that allow only Maintainers to deploy stop the deployment itself.
 The release tooling does not check roles.
 
@@ -732,7 +745,7 @@ The scaffold and `pimasi add ci-<host>` ask "Only Maintainers can release?", def
 A `config.sh` without the key, such as one kept by a refresh from an older version, reads as `false`.
 With `true`, a GitHub promotion without `RELEASE_TOKEN` is rejected before anything builds, and `pimasi env add` reminds you to give each new environment the token and the `main` rule.
 The check sees only whether the token is set, not where it is stored or what it may do.
-On GitLab the switch changes nothing in the pipeline; the protected branches and tags below keep release branches, environment branches and version tags to Maintainers.
+On GitLab the switch changes nothing in the pipeline; the protected branches and tags below keep release branches, environment branches, changelog tags and version tags to Maintainers.
 Make these settings in the host's web interface; the CLI never changes them, and host setup above says what they achieve and what they cannot stop.
 
 On GitHub, as a repository admin:
@@ -742,7 +755,7 @@ On GitHub, as a repository admin:
 - **Add it to every environment:** in **Settings > Environments**, open each environment and add the environment secret `RELEASE_TOKEN`, including environments added later. Delete any repository secret of that name under **Settings > Secrets and variables > Actions**.
 - **No organisation secret:** an organisation secret named `RELEASE_TOKEN` reaches every branch of every repository it is shared with, so the token must be an environment secret only. The switch's check sees only whether a token is present, not where it is stored, so it passes with an organisation secret too.
 - **Limit each environment to `main`:** on the same page, set **Deployment branches and tags** to **Selected branches and tags** and add the branch rule `main`, so no job on another branch can attach to the environment or read its secrets.
-- **Protect the refs:** under **Settings > Rules > Rulesets**, add a branch ruleset targeting `release/*` and `env/*` and a tag ruleset targeting `20*`. Turn on **Restrict creations**, **Restrict updates**, **Restrict deletions** and **Block force pushes**, set enforcement to **Active**, and give only the **Repository admin** and **Maintain** roles, plus a GitHub App you use, **Always allow** in the bypass list. A Maintainer's token bypasses through that role; never add the Write role.
+- **Protect the refs:** under **Settings > Rules > Rulesets**, add a branch ruleset targeting `release/*` and `env/*` and a tag ruleset targeting `20*` and `changelog/*`. Turn on **Restrict creations**, **Restrict updates**, **Restrict deletions** and **Block force pushes**, set enforcement to **Active**, and give only the **Repository admin** and **Maintain** roles, plus a GitHub App you use, **Always allow** in the bypass list. A Maintainer's token bypasses through that role; never add the Write role.
 
 On GitHub, keep it working:
 
@@ -754,7 +767,7 @@ On GitLab, as a Maintainer:
 
 - **Release branches:** under **Settings > Repository > Protected branches**, protect `release/*` with **Allowed to merge** and **Allowed to push and merge** set to Maintainers and **Allowed to force push** off.
 - **Environment branches:** protect `env/*` the same way with **Allowed to force push** on, because rollbacks move it backwards.
-- **Version tags:** under **Settings > Repository > Protected tags**, protect `20*` with **Allowed to create** set to Maintainers.
+- **Version and changelog tags:** under **Settings > Repository > Protected tags**, protect `20*` and `changelog/*`, each with **Allowed to create** set to Maintainers. A promotion started by a user who may not create `changelog/*` tags cannot create or update its environment page; its missed entry does not appear later on its own.
 - **Job-token pushes:** under **Settings > CI/CD > Job token permissions**, allow Git push requests to the repository.
 - **Who presses ▶:** only Maintainers press the buttons or run the release form. On GitLab Premium, protected environments under **Settings > CI/CD > Protected environments** that allow only Maintainers to deploy enforce this.
 
@@ -768,7 +781,8 @@ Also verify reserved runner capacity, environment approvals and secret precedenc
 Real `gh --slurp` and `glab --output ndjson`, registry pushes and model calls remain unverified locally.
 Whether either host serves an unreferenced hotfix commit by SHA after branch deletion is unverified; keep release branches.
 On GitHub, verify that the default token creates and force-moves `release/*` and `env/*` when no rules protect them, including after a workflow edit; for Maintainer-only releases, verify that an environment secret reaches the called promotion workflow, that the `main` deployment rule withholds it from other branches, and that the rulesets refuse the default token while letting the token's identity through.
-On GitLab, verify job-token pushes and force pushes of `release/*` and `env/*` with the setting on, that they start no pipeline, that a generated child pipeline's manual jobs show on the commit's pipeline, and that a waiting button reports the started pipeline's result; also verify that protected `release/*`, `env/*` and version tags refuse those writes for a pipeline started below Maintainer.
+On GitLab, verify job-token pushes and force pushes of `release/*` and `env/*` with the setting on, that they start no pipeline, that a generated child pipeline's manual jobs show on the commit's pipeline, and that a waiting button reports the started pipeline's result; also verify that protected `release/*`, `env/*`, `changelog/*` tags and version tags refuse those writes for a pipeline started below Maintainer.
+On both hosts, verify environment changelog reads, creation and updates through the release APIs, the fixed tag and its protection, and the host body limits with real permissions.
 
 ## Optional layers
 
@@ -824,7 +838,7 @@ The default seam now delegates to `smoke-deploy.sh`; preserved older seams must 
 Hotfixes now go on release branches: `RELEASE_BRANCH_PREFIX` replaces `RELEASE_HOTFIX_PREFIX`, and `hotfix/` branches no longer admit anything.
 Scripts use `release/` when the preserved `config.sh` lacks the key; add `RELEASE_BRANCH_PREFIX=release/` there only to change it, and delete a leftover `RELEASE_HOTFIX_PREFIX` line, which no longer has any effect.
 On GitLab, refreshed pipelines push release and environment branches with the job token and run ▶ promotions on the reserved release runner: before the first promotion, turn on the job-token setting that allows Git push requests and reserve a runner tagged `release`, or the tag in `RELEASE_RUNNER_TAG`, as host setup describes; without that runner, a pressed button's promotion stays pending.
-On both hosts, protect `release/*`, `env/*` and the version tags as host setup describes.
+On both hosts, protect `release/*`, `env/*`, `changelog/*` tags and the version tags as host setup describes.
 Refresh keeps your `config.sh`, so a project refreshed from an older version has no `RELEASE_MAINTAINERS_ONLY` key and the switch reads as off; add `RELEASE_MAINTAINERS_ONLY=true` there once [Maintainer-only releases](#maintainer-only-releases) is set up.
 Keep the refreshed environment locks and shared publishing queue: environment-specific locks alone do not protect project-wide version assignment.
 
@@ -837,6 +851,7 @@ Keep the refreshed environment locks and shared publishing queue: environment-sp
 - **Readiness failure:** inspect `/ready` and the server logs for a failed database or Redis check.
 - **Shared Docker daemon:** concurrent jobs for the same app can collide through fixed container names and compose projects; give each job an isolated Docker daemon.
 - **Publication refused:** check `RELEASE_TOKEN`, protected tags and host permissions (on GitLab, a Maintainer must start the run), then retry.
+- **Environment changelog refused:** the environment page was not updated. On GitLab, the promotion's user may not create protected `changelog/*` tags; otherwise a host error is the likely cause. Repair the cause and add the missed entry by hand from the job artefact `env-page.md`; a same redeploy adds no entry, and it does not appear later on its own. If `changelog/<environment>` exists without a release, the next promotion with changes creates the page on that tag without moving it.
 - **Rejected for a missing token:** Maintainer-only releases are on and the GitHub environment has no `RELEASE_TOKEN`; add it as [Maintainer-only releases](#maintainer-only-releases) describes, then promote again.
 - **Release branch refused:** publication is incomplete; allow the release automation to create `release/*` (on GitLab, turn on job-token pushes and have a Maintainer start the run), then promote the same SHA again to create it.
 - **Environment branch warning:** the promotion succeeded and the live record moved, but `env/<name>` did not; allow the release automation to force-push `env/*` (on GitLab, turn on job-token pushes and have a Maintainer start the run). The next healthy promotion moves it.

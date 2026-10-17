@@ -207,6 +207,18 @@ case "$1" in
         [ -z "${FAIL_PUBLISH:-}" ] || exit 1
         cp "$4" "$STATE/release-$2.md"
         ;;
+    env-page-read)
+        [ -z "${FAIL_ENV_PAGE_READ:-}" ] || exit 2
+        cat "$STATE/env-page-$2.md" 2>/dev/null || true
+        ;;
+    env-page-write)
+        [ -z "${FAIL_ENV_PAGE_WRITE:-}" ] || exit 2
+        if [ ! -f "$STATE/env-page-tag-$2" ]; then
+            git push -q origin "$4:refs/tags/changelog/$2"
+            printf '%s\n' "$4" >"$STATE/env-page-tag-$2"
+        fi
+        cp "$3" "$STATE/env-page-$2.md"
+        ;;
     branch-read)
         git ls-remote --heads origin "refs/heads/$2" | awk -v ref="refs/heads/$2" '$2 == ref { print $1 }'
         ;;

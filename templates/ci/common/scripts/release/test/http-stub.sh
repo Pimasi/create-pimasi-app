@@ -15,6 +15,7 @@ while IFS= read -r line; do
     esac
 done
 dd bs=1 count="$length" >"$STATE/http-body" 2>/dev/null
+jq -nc --arg request "$request" --rawfile headers "$STATE/http-headers" --rawfile body "$STATE/http-body" '{request: $request, headers: $headers, body: $body}' >>"$STATE/http-history"
 code=$(cat "$STATE/http-status")
 case "$request" in
     'GET /ready '*)

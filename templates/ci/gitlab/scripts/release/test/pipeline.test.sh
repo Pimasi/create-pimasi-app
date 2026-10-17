@@ -19,6 +19,7 @@ contains "the token audience can be set through a host variable" 'aud: $RELEASE_
 contains "the candidate SHA remains the originating pipeline SHA" 'RELEASE_PIPELINE_SHA: $[[ inputs.pipeline_sha ]]' "$promotion"
 contains "the candidate pipeline identity remains the originating identity" 'RELEASE_PIPELINE_ID: $[[ inputs.pipeline_id ]]' "$promotion"
 lacks "the child does not dispatch recursively" 'dispatch-on-merge' "$promotion"
+contains "both promotion jobs inherit the environment page artefact" '            - .release/env-page.md' "$promotion"
 awk '
     /^gate:/ { inJob = 1; next }
     inJob && /^[^ ]/ { exit }

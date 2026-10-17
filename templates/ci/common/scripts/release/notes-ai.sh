@@ -9,6 +9,7 @@ trap 'rm -rf "$notesDir"' 0
 trap 'exit 130' INT
 trap 'exit 143' TERM
 sh "$here/notes.sh" "${1:-}" "${2:-}" >"$notesDir/plain.md"
+cp "$notesDir/plain.md" "$out/notes-plain.md"
 
 fallback() {
     say "warning: model notes skipped: $1"

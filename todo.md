@@ -36,7 +36,9 @@ flowchart LR
 - **`env remove`:** leaves `env/<name>` behind; `env add` overwrites a same-named branch.
 - **Release-branch merge requests:** each gets a push and a merge request pipeline.
 - **A release page whose tag is missing:** stays "publication incomplete", and a retry cannot fix it.
+- **Missed environment changelog entries:** the record advances before the page write, so a same-SHA redeploy skips a missed entry. The job artefact `env-page.md` allows manual recovery; whether to add an automatic replay path remains open. Retention and Maintainers-only `changelog/*` protection are decided in [docs/releases.md](docs/releases.md).
 - **`env add` and `env remove` use `gh` or `glab`:** Simon dislikes both CLIs (15-10-2026); keep or drop?
+- **CLI test coverage:** nothing pins that `add` stays quiet with `--yes` or on a terminal.
 - **Release shell tests in every app:** about 60 files ship and run in `make test` and the gate; keep them here only?
 
 **Other follow-ups.**

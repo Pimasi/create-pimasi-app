@@ -9,7 +9,14 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         -X) method=$2; shift 2 ;;
         -o) output=$2; shift 2 ;;
-        -H | -w | --connect-timeout | --max-time) shift 2 ;;
+        -H)
+            case "$2" in
+                @*) cat "${2#@}" >>"$api/headers" ;;
+                *) printf '%s\n' "$2" >>"$api/headers" ;;
+            esac
+            shift 2
+            ;;
+        -w | --connect-timeout | --max-time) shift 2 ;;
         --data-binary) body=${2#@}; shift 2 ;;
         -sS) shift ;;
         *) url=$1; shift ;;
@@ -125,7 +132,16 @@ case "$method $path" in
             printf 403
             exit 0
         fi
-        tag=$(jq -r '.ref | sub("^refs/tags/"; "")' "$body")
+        tag=$(jq -r '.ref | sub("^refs/tags/"; "") | @uri' "$body")
+        case "$tag" in
+            changelog%2F*)
+                if [ -n "${REFUSE_ENV_PAGE_WRITE:-}" ]; then
+                    printf '{}\n' >"$output"
+                    printf 403
+                    exit 0
+                fi
+                ;;
+        esac
         if [ -n "${RACE_TAG_SHA:-}" ] && [ ! -f "$api/raced" ]; then
             printf '%s\n' "$RACE_TAG_SHA" >"$api/tags/$tag"
             : >"$api/raced"
@@ -141,8 +157,21 @@ case "$method $path" in
         ;;
     'GET /releases/'*)
         tag=${path##*/}
+        case "$tag" in
+            changelog%2F*)
+                if [ -n "${REFUSE_ENV_PAGE_READ:-}" ]; then
+                    printf '{}\n' >"$output"
+                    printf 403
+                    exit 0
+                fi
+                ;;
+        esac
         if [ -f "$api/releases/$tag.md" ]; then
-            jq -n --arg tag "$tag" '{tag_name: $tag}' >"$output"
+            if [ -f "$api/releases/$tag.json" ]; then
+                jq --rawfile notes "$api/releases/$tag.md" '. + {body: $notes, description: $notes}' "$api/releases/$tag.json" >"$output"
+            else
+                jq -n --arg tag "$tag" '{tag_name: $tag}' >"$output"
+            fi
             printf 200
         else
             printf '{}\n' >"$output"
@@ -155,7 +184,16 @@ case "$method $path" in
             printf 403
             exit 0
         fi
-        tag=$(jq -r .tag_name "$body")
+        tag=$(jq -r '.tag_name | @uri' "$body")
+        case "$tag" in
+            changelog%2F*)
+                if [ -n "${REFUSE_ENV_PAGE_WRITE:-}" ]; then
+                    printf '{}\n' >"$output"
+                    printf 403
+                    exit 0
+                fi
+                ;;
+        esac
         if [ -n "${RACE_TAG_SHA:-}" ] && [ ! -f "$api/raced" ]; then
             printf '%s\n' "$RACE_TAG_SHA" >"$api/tags/$tag"
             printf 'Racing release\n' >"$api/releases/$tag.md"
@@ -167,9 +205,53 @@ case "$method $path" in
             exit 0
         fi
         [ -f "$api/tags/$tag" ] || jq -r '.ref // .target_commitish' "$body" >"$api/tags/$tag"
-        jq -r '.body // .description' "$body" >"$api/releases/$tag.md"
-        jq '{tag_name}' "$body" >"$output"
+        case "$ADAPTER_HOST $tag" in
+            'gitlab changelog%2F'*)
+                [ -z "${ENV_PAGE_CREATED_TAG_SHA:-}" ] || printf '%s\n' "$ENV_PAGE_CREATED_TAG_SHA" >"$api/tags/$tag"
+                ;;
+        esac
+        cp "$body" "$api/release-write-body"
+        jq -rj '.body // .description' "$body" >"$api/releases/$tag.md"
+        id=$(cat "$api/release-sequence" 2>/dev/null || printf 0)
+        id=$((id + 1))
+        printf '%s\n' "$id" >"$api/release-sequence"
+        jq --argjson id "$id" '{id: $id, tag_name, name}' "$body" >"$api/releases/$tag.json"
+        cat "$api/releases/$tag.json" >"$output"
         printf 201
+        ;;
+    'PATCH /releases/'* | 'PUT /releases/'*)
+        case "$ADAPTER_HOST $method" in
+            'github PATCH' | 'gitlab PUT') ;;
+            *) printf '{}\n' >"$output"; printf 405; exit 0 ;;
+        esac
+        if [ -n "${REFUSE_ENV_PAGE_WRITE:-}" ]; then
+            printf '{}\n' >"$output"
+            printf 403
+            exit 0
+        fi
+        target=${path##*/}
+        tag=$target
+        if [ "$ADAPTER_HOST" = github ]; then
+            tag=
+            for file in "$api/releases/"*.json; do
+                [ -f "$file" ] || continue
+                if [ "$(jq -r .id "$file")" = "$target" ]; then
+                    tag=${file##*/}
+                    tag=${tag%.json}
+                    break
+                fi
+            done
+        fi
+        if [ -z "$tag" ] || [ ! -f "$api/releases/$tag.json" ]; then
+            printf '{}\n' >"$output"
+            printf 404
+            exit 0
+        fi
+        jq -rj '.body // .description' "$body" >"$api/releases/$tag.md"
+        jq --slurpfile body "$body" '.name = $body[0].name' "$api/releases/$tag.json" >"$api/next"
+        mv "$api/next" "$api/releases/$tag.json"
+        cat "$api/releases/$tag.json" >"$output"
+        printf 200
         ;;
     *) printf 'unexpected API request: %s %s\n' "$method" "$path" >&2; exit 9 ;;
 esac

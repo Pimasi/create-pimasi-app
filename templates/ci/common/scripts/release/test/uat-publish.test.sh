@@ -16,7 +16,7 @@ branch() {
 
 check "dev deploys the commit" 0 "$(promote dev "$first")"
 check "dev assigns no version" '' "$(outcome version)"
-check "dev creates no tag" '' "$(git ls-remote --tags origin)"
+check "dev creates no version tag" 0 "$(sh "$RELEASE_HOST_ADAPTER" tag-list | jq '[.[] | select(.tag | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[1-9][0-9]*(\\.[1-9][0-9]*)?$"))] | length')"
 check "env/dev names the merged commit" "$first" "$(branch env/dev)"
 
 : >"$STATE/calls"
@@ -34,7 +34,7 @@ check "production reuses the version" 2026-10-12.1 "$(outcome version)"
 check "production completes publication" succeeded "$(outcome outcome)"
 lacks "production creates no second tag or release" 'host release-publish' "$(calls)"
 lacks "production creates no second release branch" 'host created release/' "$(calls)"
-check "the commit keeps one tag" 1 "$(sh "$RELEASE_HOST_ADAPTER" tag-list | jq --arg sha "$first" '[.[] | select(.sha == $sha)] | length')"
+check "the commit keeps one version tag" 1 "$(sh "$RELEASE_HOST_ADAPTER" tag-list | jq --arg sha "$first" '[.[] | select(.sha == $sha and (.tag | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[1-9][0-9]*(\\.[1-9][0-9]*)?$")))] | length')"
 check "env/production names the commit" "$first" "$(branch env/production)"
 check "production records the reused version" 2026-10-12.1 "$(sh "$RELEASE_HOST_ADAPTER" marker-list production | jq -r '.[0].version')"
 contains "production builds with the reused version" 'APP_VERSION=2026-10-12.1' "$(calls)"

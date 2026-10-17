@@ -50,6 +50,7 @@ variables:
         paths:
             - .release/outcome.env
             - .release/notes.md
+            - .release/env-page.md
             - .release/summary.md
 
 release:

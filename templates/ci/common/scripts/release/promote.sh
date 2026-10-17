@@ -10,6 +10,7 @@ recordedVersion=
 mode=
 base=
 outcome=failed
+publication_failure=
 health_url=
 src=
 attempt=0
@@ -23,7 +24,7 @@ finish() {
     if [ "$status" -ne 0 ]; then
         case "$outcome" in
             succeeded)
-                if [ "${RELEASE_PUBLISH:-false}" = true ] && [ "$stage" != done ]; then
+                if [ "$stage" != done ]; then
                     outcome='succeeded, publication incomplete'
                     version=$recordedVersion
                 fi
@@ -39,7 +40,7 @@ finish() {
     fi
     jq -nr --arg outcome "$outcome" --arg stage "$stage" --arg environment "$name" \
         --arg sha "$sha" --arg version "$version" --arg mode "$mode" --arg base "$base" \
-        --arg health_url "$health_url" --arg attempt "$attempt" '
+        --arg health_url "$health_url" --arg attempt "$attempt" --arg publication_failure "$publication_failure" '
         $ARGS.named | to_entries[] | .key + "=" + (.value | @sh)
     ' >"$out/outcome.env"
     sh "$here/notify.sh" || say "warning: the release summary failed"
@@ -170,12 +171,22 @@ if [ "$RELEASE_PUBLISH" = true ]; then
     fi
     if [ "$publicationStatus" -ne 0 ]; then
         outcome='succeeded, publication incomplete'
+        publication_failure=version
         if [ "$publicationStatus" -eq 4 ]; then
             say "warning: release tags conflicted twice; publication stopped without moving either tag"
         else
             say "warning: publication did not complete; promote this SHA again to retry"
         fi
     fi
+fi
+if ! sh "$here/env-page.sh" "$name" "$sha" "$version" "$mode"; then
+    outcome='succeeded, publication incomplete'
+    if [ "$publication_failure" = version ]; then
+        publication_failure=both
+    else
+        publication_failure=page
+    fi
+    say "warning: the environment changelog did not complete; the healthy deployment remains recorded"
 fi
 break
 done

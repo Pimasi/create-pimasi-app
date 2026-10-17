@@ -71,7 +71,7 @@ if [ -n "$candidateHotfix" ] && [ "$mode" != same ] && [ "$mode" != rollback ]; 
             tags=$(sh "$host" tag-list) || die "could not read remote release tags"
             records=$(sh "$host" marker-list-all) || die "could not read finalised release versions"
             knownLabel=$(jq -nr --arg sha "$1" --argjson tags "$tags" --argjson records "$records" '
-                ([$tags[] | select(.sha == $sha) | .tag] | first) //
+                ([$tags[] | select(.sha == $sha and (.tag | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[1-9][0-9]*(\\.[1-9][0-9]*)?$"))) | .tag] | first) //
                 ([$records[] | select(.sha == $sha and (.version | type == "string") and .version != "") | .version] | first) // ""
             ')
             liveLabel=${knownLabel:-$(printf '%.8s' "$1")}

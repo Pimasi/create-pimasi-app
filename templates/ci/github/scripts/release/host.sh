@@ -95,7 +95,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 token=${GITHUB_TOKEN:?}
 case "$verb" in
-    tag-list | tag-read | release-exists | release-publish | branch-read | branch-create | branch-move) token=${RELEASE_TOKEN:-$token} ;;
+    tag-list | tag-read | release-exists | release-publish | env-page-read | env-page-write | branch-read | branch-create | branch-move) token=${RELEASE_TOKEN:-$token} ;;
 esac
 
 case "$verb" in
@@ -120,6 +120,39 @@ case "$verb" in
         request GET "/releases/tags/$encoded" || status=$?
         [ "$status" -eq 0 ] || exit "$status"
         jq -e --arg tag "$2" '.tag_name == $tag' "$hostTmp/response" >/dev/null || exit 2
+        ;;
+    env-page-read | env-page-write)
+        pageTag=changelog/$2
+        pageEncoded=$(jq -rn --arg value "$pageTag" '$value | @uri')
+        status=0
+        request GET "/releases/tags/$pageEncoded" || status=$?
+        [ "$status" -ne 2 ] || fail "could not read the changelog for $2"
+        if [ "$status" -eq 0 ]; then
+            jq -e --arg tag "$pageTag" '.tag_name == $tag and (.body | type == "string")' "$hostTmp/response" >/dev/null || fail "invalid changelog for $2"
+        fi
+        if [ "$verb" = env-page-read ]; then
+            [ "$status" -eq 0 ] || exit 0
+            jq -rj .body "$hostTmp/response"
+            exit 0
+        fi
+        if [ "$status" -eq 0 ]; then
+            pageId=$(jq -er '.id | select(type == "number" and . > 0)' "$hostTmp/response") || fail "the changelog for $2 has no id"
+            jq -nc --arg name "__APP_SLUG__ changelog ($2)" --rawfile body "$3" '{name: $name, body: $body}' >"$hostTmp/body"
+            request PATCH "/releases/$pageId" --data-binary "@$hostTmp/body" || fail "could not update the changelog for $2"
+        else
+            found=$(tagRead "$pageTag") || fail "could not read tag $pageTag"
+            pageSha=${found:-$4}
+            if [ -z "$found" ]; then
+                jq -nc --arg ref "refs/tags/$pageTag" --arg sha "$4" '{ref: $ref, sha: $sha}' >"$hostTmp/body"
+                if ! request POST /git/refs --data-binary "@$hostTmp/body"; then
+                    found=$(tagRead "$pageTag") || fail "could not read tag $pageTag after refused creation"
+                    [ "$found" = "$4" ] || fail "could not create tag $pageTag at $4"
+                fi
+            fi
+            jq -nc --arg tag "$pageTag" --arg sha "$pageSha" --arg name "__APP_SLUG__ changelog ($2)" --rawfile body "$3" \
+                '{tag_name: $tag, target_commitish: $sha, name: $name, body: $body, make_latest: "false"}' >"$hostTmp/body"
+            request POST /releases --data-binary "@$hostTmp/body" || fail "could not create the changelog for $2"
+        fi
         ;;
     tag-list)
         page=1

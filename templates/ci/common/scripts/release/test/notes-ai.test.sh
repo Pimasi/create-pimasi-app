@@ -33,6 +33,7 @@ export ANTHROPIC_API_KEY ANTHROPIC_BASE_URL
 rewritten=$(printf '%s\n' "$plain" | sed 's/add export/Export data/')
 jq -n --arg reply "$rewritten" '{stop_reason: "end_turn", content: [{type: "text", text: $reply}, {type: "tool_use", name: "ignored"}]}' >"$STATE/http-reply"
 check "a complete model reply is used" "$rewritten" "$(ai_notes)"
+check "a model reply never replaces the stored plain notes" "$plain" "$(cat "$RELEASE_OUT/notes-plain.md")"
 headers=$(cat "$STATE/http-headers")
 contains "the messages endpoint is used" "POST /v1/messages" "$headers"
 contains "the API key is sent" "x-api-key: local-test-key" "$headers"

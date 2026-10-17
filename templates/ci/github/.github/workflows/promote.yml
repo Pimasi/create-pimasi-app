@@ -81,6 +81,7 @@ jobs:
                   path: |
                       .release/outcome.env
                       .release/notes.md
+                      .release/env-page.md
                       .release/summary.md
     publish:
         if: inputs.publish
@@ -139,4 +140,5 @@ jobs:
                   path: |
                       .release/outcome.env
                       .release/notes.md
+                      .release/env-page.md
                       .release/summary.md
