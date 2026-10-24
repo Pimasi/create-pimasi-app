@@ -101,6 +101,7 @@ Who releases:
 Scope:
 
 - **Docker only, built per environment:** front-end values stay baked at build time. A replaceable build belongs to a separate PRD.
+- **Docker Compose hosts:** RELEASE.md carries a worked example for deploying with Docker Compose over SSH, not a shipped seam script; a host deploy pins the release image reference in every Compose command and never uses `latest`.
 - **This work:** versioning and the management of versions and environments.
 - **Elsewhere:** releasing this npm package, versions per service and automatic rollback.
 

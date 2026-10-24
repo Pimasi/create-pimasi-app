@@ -396,6 +396,55 @@ It sets `PM2_INSTANCES=1` for the runner smoke check.
 `compose.sh` selects web, database and Redis overrides from the services already present, resetting every service's ports.
 Gate and promotion cleanup tear down their runner stacks with volumes on both success and failure.
 
+### Example: Docker Compose on a host
+
+On a long-lived host running Docker Compose, a replacement `deploy.sh` pushes the images, ships the release's host Compose file, then pulls and starts exactly the images this promotion built, never `latest`.
+Keep this project-owned `docker-compose.host.yml` at the repository root:
+
+```yaml
+services:
+    pimasi-server:
+        image: ${RELEASE_IMAGE_SERVER:?RELEASE_IMAGE_SERVER is required}
+        restart: always
+    pimasi-web:
+        image: ${RELEASE_IMAGE_WEB:?RELEASE_IMAGE_WEB is required}
+        restart: always
+```
+
+Add the app's databases, networks and runtime environment there, then replace `scripts/release/deploy.sh` with:
+
+```sh
+#!/bin/sh
+set -eu
+. "$(dirname -- "$0")/lib.sh"
+initialise_output
+: "${DEPLOY_SSH_TARGET:?DEPLOY_SSH_TARGET is required}"
+: "${DEPLOY_SSH_KEY:?DEPLOY_SSH_KEY is required}"
+: "${DEPLOY_SSH_KNOWN_HOSTS:?DEPLOY_SSH_KNOWN_HOSTS is required}"
+key=$(mktemp)
+trap 'rm -f "$key"' EXIT
+printf '%s\n' "$DEPLOY_SSH_KEY" > "$key"
+known_hosts=$out/known_hosts
+printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$known_hosts"
+sh "$host" registry-login
+for image in "$RELEASE_IMAGE_SERVER" "$RELEASE_IMAGE_WEB" "${RELEASE_IMAGE_SERVER_VERSION:-}" "${RELEASE_IMAGE_WEB_VERSION:-}"; do
+    [ -z "$image" ] || docker push "$image"
+done
+server=${RELEASE_IMAGE_SERVER_VERSION:-$RELEASE_IMAGE_SERVER}
+web=${RELEASE_IMAGE_WEB_VERSION:-$RELEASE_IMAGE_WEB}
+project=app-$1
+scp -i "$key" -o "UserKnownHostsFile=$known_hosts" -o StrictHostKeyChecking=yes "$out/src/docker-compose.host.yml" "$DEPLOY_SSH_TARGET:$project.yml"
+ssh -i "$key" -o "UserKnownHostsFile=$known_hosts" -o StrictHostKeyChecking=yes "$DEPLOY_SSH_TARGET" "RELEASE_IMAGE_SERVER='$server' RELEASE_IMAGE_WEB='$web' docker compose -p '$project' -f '$project.yml' pull"
+ssh -i "$key" -o "UserKnownHostsFile=$known_hosts" -o StrictHostKeyChecking=yes "$DEPLOY_SSH_TARGET" "RELEASE_IMAGE_SERVER='$server' RELEASE_IMAGE_WEB='$web' docker compose -p '$project' -f '$project.yml' up -d --wait"
+```
+
+Publishing environments deploy the version tag; the others deploy the commit tag.
+Pass the references to every Compose command the host runs, including any helper script, because each command interpolates the whole file.
+The `:?` guard stops an unset or empty reference before any container changes; without it, an empty reference fails with an unrelated error or builds on the host when the service keeps a `build:` section.
+The host needs its own registry pull access.
+Set deploy credentials `DEPLOY_SSH_TARGET` to `user@host`, `DEPLOY_SSH_KEY` to the private key and `DEPLOY_SSH_KNOWN_HOSTS` to the host's `known_hosts` line; the host key must be pinned, never trusted on first use.
+Set `RELEASE_HEALTH_URL` to the host's API base URL so the health stage requires its `/ping` to report the deployed SHA and `/ready` to answer HTTP 200.
+
 ## Where configuration lives
 
 Configuration can come from the host, AWS, 1Password, a vault or another manager, in any combination.
