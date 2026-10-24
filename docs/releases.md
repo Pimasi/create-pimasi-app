@@ -72,55 +72,55 @@ Around it:
 - **Images:** `<registry>/<environment>/pimasi-server` and `pimasi-web`, tagged with the commit's first 12 characters and with the version when there is one. Every deploy builds, because the web image bakes in its environment's values.
 - **Environments:** production is given; `npx pimasi env add <name>` creates the rest (`--publish`, `--on-merge`, `--after` or `--before`). They are independent unless linked, and `--after X` accepts only a commit that X runs or has moved past. `env add` and `env remove` also create or delete the host's environment through `gh` or `glab` when they can; otherwise the first deploy creates it.
 
-## 3. Decisions you must not undo
+## 3. Rules you must not undo
 
-Simon Piscitelli owns this design. These are his decisions, with his words where he gave them; change one only with him, and record any new decision here with his words on the day he makes it.
+These rules hold the design together. Change one only with the maintainers' agreement, and add any new settled rule here as behaviour, without names, dates or quotes.
 
 The model:
 
-- **Environments, 12-10-2026:** production is given, the CLI creates the rest, and they are independent unless a project links them.
-- **Deploy on merge, 13-10-2026:** opt-in per environment: "every time we merge into main, then it should auto-deploy to that environment".
-- **No forced order, 14-10-2026:** UAT before production is expected, not enforced: "keep it loose ... I don't want to have a rule in the system to force it to go to UAT first."
-- **Versions, 13-10-2026:** a date with a counter, a third number for hotfixes, no `v`; dev deploys get no version.
-- **UAT can tag, 14-10-2026:** `env add` asks "Create a version when deployed here?": "it asks ... we can add things like auto or manual."
+- **Environments:** production is given, the CLI creates the rest, and they are independent unless a project links them.
+- **Deploy on merge:** opt-in per environment; when enabled, every merge into `main` automatically deploys to that environment.
+- **No forced order:** uat before production is expected, not enforced.
+- **Versions:** a date with a counter, a third number for hotfixes, no `v`; dev deploys get no version.
+- **UAT can tag:** `env add` offers version creation independently of automatic or manual deployment, so uat can publish versions.
 
 Branches and hotfixes:
 
-- **Hotfix content is the team's business, 13-10-2026:** "we just want to create the versioning capabilities to say this is a hotfix and the hotfix comes as a branch from that release, that's all."
-- **A release branch per version, 14-10-2026:** "one process for normal release and a hotfix"; kept with no cleanup: "I don't see any real detrimental build up."
-- **Merged hotfixes stay promotable, 13-10-2026:** "go with A".
-- **Environment branches, 14-10-2026:** the host record stays the truth and `env/<name>` mirrors it: "env slash the name is absolutely fine." Only the pipeline moves them, 15-10-2026: "automated only by the pipeline (maintainers as the human work)".
+- **Hotfix content:** the team chooses what goes into a hotfix; the tooling provides hotfix versioning and a branch from the base release.
+- **A release branch per version:** normal releases and hotfixes share one process; keep release branches without automatic cleanup.
+- **Merged hotfixes stay promotable:** merging a hotfix back into `main` does not change its hotfix identity, base or version.
+- **Environment branches:** the host record stays the truth and `env/<name>` mirrors it. Only the pipeline moves these branches; maintainers do not push them by hand.
 
 Who releases:
 
-- **Maintainers only, 15-10-2026:** "B. only maintainers can do a release." Both hosts protect `release/*`, `env/*` and version tags.
-- **Enforced on GitHub, 15-10-2026:** `RELEASE_TOKEN` is an environment secret, each environment accepts deployments only from `main`, and only that token, Maintainers and Admins pass the rules; the default token never does. His words, through speech-to-text: "Yeah, import it" ("implement it").
-- **A runbook and a switch, not host automation, 15-10-2026:** "only A, because I particularly don't like to use the gh or glab CLIs." Host settings stay manual, and nothing new may depend on those CLIs.
-- **Buttons on GitLab, the form on GitHub, 14-10-2026:** "absolutely perfect and in line with what I was expecting". GitHub's equivalent, required reviewers, needs a public repository on Free, Pro and Team, and he left that host to us: "you'll know best."
+- **Maintainers only:** only Maintainers may release. Both hosts protect `release/*`, `env/*` and version tags.
+- **Enforced on GitHub:** `RELEASE_TOKEN` is an environment secret, each environment accepts deployments only from `main`, and only that token, Maintainers and Admins pass the rules; the default token never does.
+- **A runbook and a switch:** host settings stay manual, and nothing new may depend on `gh` or `glab`.
+- **Buttons on GitLab, the form on GitHub:** keep the GitLab deploy buttons and GitHub release form. GitHub's equivalent approval mechanism, required reviewers, needs a public repository on Free, Pro and Team.
 
 Scope:
 
-- **Docker only, built per environment, 14-10-2026:** front-end values stay baked at build time: "it needs to be a build time." A replaceable build belongs to a separate PRD.
-- **This work:** "the versioning and management of version and environments."
-- **Elsewhere:** releasing this npm package ("this repo is an npm package"), versions per service and automatic rollback.
+- **Docker only, built per environment:** front-end values stay baked at build time. A replaceable build belongs to a separate PRD.
+- **This work:** versioning and the management of versions and environments.
+- **Elsewhere:** releasing this npm package, versions per service and automatic rollback.
 
-Defaults taken on 12-10-2026, when Simon said "implement the PRD" without choosing between options. They hold, but they were Claude's recommendations, so they are easier to revisit:
+Defaults that are easier to revisit:
 
-- **Release logic is shell inside each app,** not a CLI subcommand or outside tools; fixes reach older apps through `add --refresh`.
-- **Host deployment records are the truth,** because default tokens can write them without secrets.
-- **Before a project replaces `deploy.sh`,** a deploy pushes the images, boots the server on the runner and checks `/ping`, and the outcome says exactly that.
-- **The full gate runs again at promotion,** trading rollback speed for proof at release time.
-- **Pull request titles follow `type(scope): summary`,** because the notes group by it.
+- **Release logic:** shell inside each app, not a CLI subcommand or outside tools; fixes reach older apps through `add --refresh`.
+- **Host deployment records:** the source of truth, because default tokens can write them without secrets.
+- **Default deployment:** before a project replaces `deploy.sh`, a deploy pushes the images, boots the server on the runner and checks `/ping`, and the outcome says exactly that.
+- **Promotion gate:** the full gate runs again at promotion, trading rollback speed for proof at release time.
+- **Pull request titles:** follow `type(scope): summary`, because the notes group by it.
 
-Environment pages, 17-10-2026: Simon said, through speech-to-text, "So to two key things. One is um, we want to update what the branch in the PMassive app starter does to make sure that there is a page per environment rather than a page per version. although I guess there needs to be a page where it's, where, where on that version just to say these are the changes of this version." Earlier he asked, "I mean, rather, a dev page which then gets updated for every new version and a prod page that gets updated with any new version only to production if that possible." S1 to S7 below are Claude's calls under Simon's instruction to follow the documentation and the recommended option, fixed for this build:
+Environment pages:
 
-- **S1, version pages, 17-10-2026:** unchanged; each version page keeps its first notes, "the changes of this version".
-- **S2, environment page, 17-10-2026:** one living release page for every environment, publishing or not, titled `<app> changelog (<environment>)`, on `changelog/<environment>` created at the commit of the first page write or adopted unchanged if already present without a release, and never moved.
-- **S3, entries, 17-10-2026:** every range, rollback, no-baseline or hotfix promotion adds one entry; a same redeploy adds none.
-- **S4, entry content, 17-10-2026:** `## <version, or sha-<first 12 characters> when the environment does not publish> · DD-MM-YYYY HH:MM UTC`, followed by that promotion's plain notes. The model rewrite still changes only the summary and webhook.
-- **S5, order and size, 17-10-2026:** newest first; if the new entry alone exceeds 125,000 characters on GitHub or 1,000,000 on GitLab, cut its commit list to fit, ending with `(N more commits not shown)`. Keep the newest 100 entries, then drop the oldest until the body fits the host limit.
-- **S6, timing and failure, 17-10-2026:** write after the live record and version publication, inside the existing per-environment lock so read-modify-write is safe. A refused read or write ends `succeeded, publication incomplete` and never fails the deploy. The summary says the environment page was not updated, names the likely cause (on GitLab, the promotion's user may not create `changelog/*` tags; otherwise a host error), and points to the job artefact `env-page.md` to add the missed entry by hand; a same-SHA retry does not replay it.
-- **S7, protection, 17-10-2026:** add `changelog/*` tags to the manual protected patterns on both hosts, alongside `env/*`, `release/*` and version tags. Simon confirmed: "maintainers only." After learning that the job token borrows the rights of whoever started the pipeline, he confirmed: "Yeah, keep maintainers only". On GitLab, a promotion started by a user who may not create these tags cannot create or update its environment page; its missed entry does not appear later on its own.
+- **Version pages:** keep each version's first notes as described in §2.
+- **Environment page:** retain one living page per environment, publishing or not, with the fixed title and unmoved or adopted tag described in §2.
+- **Entries:** retain the promotion cases in §2; a same redeploy adds none.
+- **Entry content:** keep the version or SHA heading, UTC timestamp and plain promotion notes in §2; a model rewrite changes only the summary and webhook.
+- **Order and size:** retain the newest-first order, 100-entry limit, host body limits and commit-list truncation with its marker in §2.
+- **Timing and failure:** keep page writes after the live record and version publication, inside the environment lock. A refused read or write ends `succeeded, publication incomplete` and never fails the deploy. The summary says the environment page was not updated, names the likely cause (on GitLab, the promotion's user may not create `changelog/*` tags; otherwise a host error), and points to the job artefact `env-page.md` to add the missed entry by hand; a same-SHA retry does not replay it.
+- **Protection:** manually protect `changelog/*` tags on both hosts alongside `env/*`, `release/*` and version tags, with creation limited to Maintainers. On GitLab, the job token borrows the rights of whoever started the pipeline; a user who may not create these tags cannot create or update the environment page, and its missed entry does not appear later on its own.
 
 ## 4. Working on it
 
@@ -129,8 +129,8 @@ Rules:
 - **Contract first:** DESIGN.md and RELEASE.md change in the same change as the code, and `add` must equal `generate` for `ci-github` and `ci-gitlab`.
 - **POSIX `sh`:** pass under dash and BusyBox ash, with mawk, gawk and BusyBox awk; JSON goes through `jq`; scripts are mode 644 and run as `sh path`.
 - **Templates:** no comments in template code; format for Prettier with `tabWidth: 4`, because the repo's own Prettier ignores `templates/`; keep the tokens the CLI renames (`__APP_SLUG__`, `@pimasi/lib`, `pimasi-server`, `pimasi-web` and the rest).
-- **Words:** British English and no em dashes. Environments are `production`, `uat` and `dev`; never write "staging" or "pre-prod" in anything that ships.
-- **Hands off:** `templates/base/.claude/skills/code-review/references/risk-lenses.md` is Simon's own text; leave its "staging".
+- **Words:** British English and no em dashes. Environments are `production`, `uat` and `dev`; use only those names in anything that ships.
+- **Hands off:** `templates/base/.claude/skills/code-review/references/risk-lenses.md` is hand-written; leave its "staging".
 
 Tests:
 
@@ -173,7 +173,7 @@ Not yet proven on a live host. RELEASE.md, "Hosted verification still required",
 Accepted gaps:
 
 - **Who can start a release:** on GitHub, anyone with write access can start Release on `main`; on GitLab Free, a non-Maintainer can still deploy, though the tag and branch writes are refused. Required reviewers, protected environments or a role check would stop it.
-- **GitLab environment changelog permissions, 17-10-2026:** Simon kept `changelog/*` creation to Maintainers: "maintainers only." The job token borrows the rights of whoever started the pipeline, so a promotion started by a user who may not create those tags cannot create or update its environment page. Its missed entry does not appear later on its own; add it by hand from the job artefact `env-page.md`.
+- **GitLab environment changelog permissions:** `changelog/*` creation is limited to Maintainers. The job token borrows the rights of whoever started the pipeline, so a promotion started by a user who may not create those tags cannot create or update its environment page. Its missed entry does not appear later on its own; add it by hand from the job artefact `env-page.md`.
 - **One queue:** tagging environments run one at a time.
 - **GitLab keeps versions only in tags:** if uat's tag is refused, production can assign a different version.
 - **A release branch deleted by hand:** the next release's notes lose the "Hotfix was live" reminder.
@@ -182,6 +182,6 @@ Accepted gaps:
 Open:
 
 - **In `todo.md`:** a role check before deploy, `env remove` leaving `env/<name>` behind, duplicate merge request pipelines on release branches, a release page whose tag is missing, whether missed environment entries should gain a replay path beyond manual recovery, coverage that `add` stays quiet with `--yes` or on a terminal, and whether `env add` and `env remove` keep using `gh` or `glab`.
-- **Shell tests in apps:** the suite, about 60 files, ships in every app and runs in `make test` and the gate. Whether it should live only in this repo is open with Simon.
+- **Shell tests in apps:** the suite, about 60 files, ships in every app and runs in `make test` and the gate. Whether it should live only in this repo remains open.
 - **Separate PRDs:** a replaceable build (non-Docker targets, per-service images, a server image built once per version) and releasing this npm package.
 - **Not published:** the CLI is still 0.2.0, so no app sees any of this until a release.

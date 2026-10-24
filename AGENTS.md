@@ -4,6 +4,12 @@ Rules for AI agents working on the create-pimasi-app repository. Agent entry
 points such as [CLAUDE.md](CLAUDE.md) redirect here; keep behavioural rules in
 this file rather than in the entry points.
 
+## Public repository
+
+This repository is public. Never write a person's name, quotes of what someone
+said, or a record of who decided what and when. State settled rules as behaviour
+in the document that owns them.
+
 ## Reviewing changes
 
 When asked to review or verify changes ("review your changes", "verify your
@@ -20,8 +26,7 @@ loop, on request.
 Before changing anything under `templates/ci/`, the `--ci` axis,
 `add ci-<host>` or `pimasi env` in `src/`, read
 [docs/releases.md](docs/releases.md). It explains how releases work, the
-owner's decisions that must not be undone without him, and how to test the
-shell tooling.
+rules in §3 that must not be undone, and how to test the shell tooling.
 
 ## Repository skills
 
@@ -30,9 +35,7 @@ The agent guides and skills that ship with every generated app live under
 automatically only when working on files under `templates/base/`; elsewhere in
 this repo, follow the skill file directly as described above.
 
-The review skill keeps the name `code-review` (the owner's decision,
-12-10-2026). In a generated app that makes it take the place of Claude Code's
-bundled `/code-review`, so a typed `/code-review`, and any review Claude
-routes to a skill, runs the gate; the bundled review stays reachable as a
-typed `/review`. The alternative considered was renaming it `review-pass`, as
-in astrosiege, which would have left the bundled command in place.
+The review skill keeps the name `code-review`. In a generated app it takes
+the place of Claude Code's bundled `/code-review`, so a typed `/code-review`,
+and any review Claude routes to a skill, runs the gate; the bundled review
+stays reachable as a typed `/review`.
