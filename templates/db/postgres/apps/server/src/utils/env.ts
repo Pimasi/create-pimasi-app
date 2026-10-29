@@ -25,6 +25,7 @@ export const $env = {
     PORT: Number(process.env.PORT ?? 3000),
     JWT_SECRET: getenv("JWT_SECRET"),
     REDIS_URL: process.env.REDIS_URL ?? "",
+    RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED !== "false",
     NOTIFICATION_URL: process.env.NOTIFICATION_URL,
     TEST_URL: process.env.TEST_URL,
 

@@ -40,7 +40,8 @@ flowchart TD
     Admit --> Notes[Read live record, assign version when publishing and write notes]
     Notes --> Gate[Gate the SHA in a worktree]
     Gate --> Build[Build production server and web images]
-    Build --> Deploy[Run deploy.sh]
+    Build --> Push[Push every image reference]
+    Push --> Deploy[Run deploy.sh]
     Deploy --> Health{Does ping report the SHA and ready return 200?}
     Health -->|yes| Record[Write and finalise live record, move env/name]
     Record --> Publish[Publish version tag, release and release branch when enabled]
@@ -51,6 +52,7 @@ flowchart TD
     Notes -->|error| Failed[Failed at stage: baseline unchanged]
     Gate -->|error| Failed
     Build -->|error| Failed
+    Push -->|error| Failed
     Deploy -->|error| Failed
     Health -->|no| Failed
     Record -->|error| Failed
@@ -61,7 +63,7 @@ flowchart TD
 ```
 
 Release scripts come from the tip of `main`.
-The gate and Docker builds use a detached worktree at the requested SHA under `.release/src`.
+The gate and Docker builds use a detached worktree at the requested SHA under `.release/src`; the gate runs the suite inside the production server image with the rate limiter off.
 The worktree's HEAD is checked before the gate runs.
 Each environment has its own `release-<name>` lock; publishing jobs also share a project-wide `release` queue from version assignment through publication.
 This prevents two environments reserving the same counter or assigning two tags to one commit across midnight.
@@ -294,7 +296,7 @@ Without `RELEASE_HEALTH_URL`, success reads `Published 2026-10-12.1: images push
 With a target URL, it reads `Released 2026-10-12.1 to production`.
 For a non-publishing promotion, the summary uses the commit label instead of a release version.
 Publication failure keeps a successful live record and returns exit code zero.
-Gate, build, deploy, health and record failures return a non-zero exit code and leave the baseline unchanged.
+Gate, build, push, deploy, health and record failures return a non-zero exit code and leave the baseline unchanged.
 An unhealthy or failed run creates no release tag or finalised release record, so it consumes no release counter.
 
 A rejected promotion builds nothing.
@@ -360,7 +362,8 @@ It never changes version pages or environment changelog entries.
 Replace `scripts/release/deploy.sh` to connect your infrastructure.
 The pipeline calls `sh scripts/release/deploy.sh <environment> <sha> <version>`.
 `RELEASE_IMAGE_SERVER` and `RELEASE_IMAGE_WEB` contain the built image references.
-For a publishing promotion, `RELEASE_IMAGE_SERVER_VERSION` and `RELEASE_IMAGE_WEB_VERSION` contain the additional version tags; the default seam pushes all four references.
+For a publishing promotion, `RELEASE_IMAGE_SERVER_VERSION` and `RELEASE_IMAGE_WEB_VERSION` contain the additional version tags; the pipeline pushes every reference through `push.sh` before the seam runs.
+`RELEASE_DEPLOY_IMAGE_SERVER` and `RELEASE_DEPLOY_IMAGE_WEB` contain the references to start, the version tags when publishing and the commit tags otherwise; the seam performs no pushes.
 Exit zero when the rollout command succeeds; any other exit code fails the deploy stage.
 
 On GitHub, repository and environment secrets and variables reach the promotion step as JSON through `RELEASE_DEPLOY_SECRETS_JSON` and `RELEASE_DEPLOY_VARS_JSON`, evaluated after the job attaches to its environment.
@@ -372,12 +375,12 @@ The workflow retains environment transport because the [GitHub runner prints int
 For larger configuration, keep only the manager credentials or references on the host and fetch the values inside `deploy.sh`, or let the application fetch them at startup.
 GitLab supplies individual CI/CD variables and has no combined JSON limit.
 The deployment wrapper exports valid environment variable names only for `deploy.sh`, with secrets taking precedence over variables, without printing their values.
-The gate runs with an allowlist of operational environment variables and receives neither deployment JSON payload nor inherited deployment credentials; adding deploy credentials needs no workflow edit and survives refresh.
+The gate runs the suite inside the production server image with the rate limiter off, with an allowlist of operational environment variables and receives neither deployment JSON payload nor inherited deployment credentials; adding deploy credentials needs no workflow edit and survives refresh.
 On GitLab, project CI/CD variables reach the job and `deploy.sh`; variables scoped to the selected environment take precedence over the same project key with scope `*`. Configure credentials as masked, protected variables. GitLab passes protected variables to every pipeline on a protected branch, which means pipelines on `main` and on `release/*`, branches only Maintainers can push to. GitLab supplies project-wide variables to its runner automatically; the clean gate command removes inherited credentials before invoking build checks and tests.
 
-The default seam calls `scripts/release/smoke-deploy.sh`, which logs into the host registry, pushes both images, builds release-stack services with a build section except the release-built server and web, then starts the production server on the runner.
+The default seam calls `scripts/release/smoke-deploy.sh`, which builds release-stack services with a build section except the release-built server and web, then starts `RELEASE_DEPLOY_IMAGE_SERVER` on the runner.
 Both manual and merge promotions build those dependencies, including MongoDB, even on a fresh Docker daemon.
-Image repository paths include the environment because the web API URL is baked into its image.
+Image names carry the environment as a suffix, `<registry>/pimasi-server-<environment>` and `<registry>/pimasi-web-<environment>`, because the web API URL is baked into its image.
 Both images use the tag `<first 12 characters of SHA>` for every promotion.
 A publishing promotion additionally tags the same images with the release version, such as `2026-10-12.1`.
 The `APP_VERSION` build argument is that version when publishing, or `sha-<first 12 characters of SHA>` otherwise; `GIT_SHA` remains the full commit.
@@ -392,22 +395,22 @@ Change `RELEASE_HEALTH_TIMEOUT` in `config.sh` when your target needs longer.
 Setting the URL alone does not deploy anywhere: replace the seam too.
 
 `docker-compose.release.yml` removes the development command, build and mounts so the server image's production CMD runs.
-It sets `PM2_INSTANCES=1` for the runner smoke check.
+It sets `PM2_INSTANCES=1` for the runner smoke check and `RATE_LIMIT_ENABLED=true` so the smoke stack runs production configuration.
 `compose.sh` selects web, database and Redis overrides from the services already present, resetting every service's ports.
 Gate and promotion cleanup tear down their runner stacks with volumes on both success and failure.
 
 ### Example: Docker Compose on a host
 
-On a long-lived host running Docker Compose, a replacement `deploy.sh` pushes the images, ships the release's host Compose file, then pulls and starts exactly the images this promotion built, never `latest`.
+On a long-lived host running Docker Compose, a replacement `deploy.sh` ships the release's host Compose file, then pulls and starts the deploy references the pipeline has pushed, never `latest`.
 Keep this project-owned `docker-compose.host.yml` at the repository root:
 
 ```yaml
 services:
     pimasi-server:
-        image: ${RELEASE_IMAGE_SERVER:?RELEASE_IMAGE_SERVER is required}
+        image: ${RELEASE_DEPLOY_IMAGE_SERVER:?RELEASE_DEPLOY_IMAGE_SERVER is required}
         restart: always
     pimasi-web:
-        image: ${RELEASE_IMAGE_WEB:?RELEASE_IMAGE_WEB is required}
+        image: ${RELEASE_DEPLOY_IMAGE_WEB:?RELEASE_DEPLOY_IMAGE_WEB is required}
         restart: always
 ```
 
@@ -426,16 +429,10 @@ trap 'rm -f "$key"' EXIT
 printf '%s\n' "$DEPLOY_SSH_KEY" > "$key"
 known_hosts=$out/known_hosts
 printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$known_hosts"
-sh "$host" registry-login
-for image in "$RELEASE_IMAGE_SERVER" "$RELEASE_IMAGE_WEB" "${RELEASE_IMAGE_SERVER_VERSION:-}" "${RELEASE_IMAGE_WEB_VERSION:-}"; do
-    [ -z "$image" ] || docker push "$image"
-done
-server=${RELEASE_IMAGE_SERVER_VERSION:-$RELEASE_IMAGE_SERVER}
-web=${RELEASE_IMAGE_WEB_VERSION:-$RELEASE_IMAGE_WEB}
 project=app-$1
 scp -i "$key" -o "UserKnownHostsFile=$known_hosts" -o StrictHostKeyChecking=yes "$out/src/docker-compose.host.yml" "$DEPLOY_SSH_TARGET:$project.yml"
-ssh -i "$key" -o "UserKnownHostsFile=$known_hosts" -o StrictHostKeyChecking=yes "$DEPLOY_SSH_TARGET" "RELEASE_IMAGE_SERVER='$server' RELEASE_IMAGE_WEB='$web' docker compose -p '$project' -f '$project.yml' pull"
-ssh -i "$key" -o "UserKnownHostsFile=$known_hosts" -o StrictHostKeyChecking=yes "$DEPLOY_SSH_TARGET" "RELEASE_IMAGE_SERVER='$server' RELEASE_IMAGE_WEB='$web' docker compose -p '$project' -f '$project.yml' up -d --wait"
+ssh -i "$key" -o "UserKnownHostsFile=$known_hosts" -o StrictHostKeyChecking=yes "$DEPLOY_SSH_TARGET" "RELEASE_DEPLOY_IMAGE_SERVER='${RELEASE_DEPLOY_IMAGE_SERVER:?RELEASE_DEPLOY_IMAGE_SERVER is required}' RELEASE_DEPLOY_IMAGE_WEB='${RELEASE_DEPLOY_IMAGE_WEB:?RELEASE_DEPLOY_IMAGE_WEB is required}' docker compose -p '$project' -f '$project.yml' pull"
+ssh -i "$key" -o "UserKnownHostsFile=$known_hosts" -o StrictHostKeyChecking=yes "$DEPLOY_SSH_TARGET" "RELEASE_DEPLOY_IMAGE_SERVER='${RELEASE_DEPLOY_IMAGE_SERVER:?RELEASE_DEPLOY_IMAGE_SERVER is required}' RELEASE_DEPLOY_IMAGE_WEB='${RELEASE_DEPLOY_IMAGE_WEB:?RELEASE_DEPLOY_IMAGE_WEB is required}' docker compose -p '$project' -f '$project.yml' up -d --wait"
 ```
 
 Publishing environments deploy the version tag; the others deploy the commit tag.
@@ -853,19 +850,20 @@ Missing configuration or a failed HTTP request makes this command fail.
 
 ## Adopting this on an older app
 
-Bring the app's base contracts up to date before its first promotion.
+Bring the app's base contracts up to date before its first gate run or promotion.
 Keep a committed npm lockfile and a `main` branch with full history.
 Ensure the Makefile ends with `-include *.mk` so `make test` includes the shell suite.
 For apps scaffolded with 0.2.0, run `npx create-pimasi-app@latest add ci-github` or `npx create-pimasi-app@latest add ci-gitlab` from a clean git tree.
 The explicit latest package avoids the locally installed 0.2.0 CLI, whose `pimasi add` command does not support CI.
 When the root `.gitignore` is missing, add mode first restores missing root and server ignore files and reports them, then checks cleanliness with those rules in place.
-Untouched published prerequisites are upgraded in place; edited files that lack the required contract receive `.new` siblings listed under "Merge before your first release".
+Untouched published prerequisites are upgraded in place; edited files that lack the required contract receive `.new` siblings listed under "Merge before your first gate run or release".
 Already satisfied prerequisites are preserved, including ordinary project edits and formatting using the project's JSON `.prettierrc`.
-The command adds the host fragments immediately; merge any listed prerequisites before promoting.
+The command adds the host fragments immediately; merge any listed prerequisites before the first gate run or promotion.
 
 - **Ping:** returns string `version` and `commit` from `APP_VERSION` and `GIT_SHA`, without checking dependencies.
 - **Readiness:** `/ready` returns 200 only when all registered database and Redis checks pass; the registry, route, schema and selected boot hooks are adoption prerequisites.
-- **Server image:** accepts both build arguments and starts through its production CMD.
+- **Server image:** accepts both build arguments and starts through its production CMD; merge `Dockerfile.server.new` before running the gate.
+- **Rate limiting:** the environment and selected middleware read `RATE_LIMIT_ENABLED`; the switch and middleware ship with unit tests, and the CI overlay sets it to `"false"` so the suite runs inside the production server image with the rate limiter off.
 - **Web images:** accept both build arguments and public API and Firebase build values.
 - **Processes:** PM2 reads `PM2_INSTANCES`, defaulting to one.
 - **Lockfile:** commit `package-lock.json` so `npm ci` reproduces dependencies.
@@ -880,9 +878,12 @@ From a clean git tree, run `npx pimasi add ci-github --refresh` or `npx pimasi a
 The command replaces release tooling and pipeline files with the installed CLI's versions and reports each change.
 It preserves the project-owned `scripts/release/deploy.sh`, `scripts/release/config.sh` and `scripts/release/environments/`.
 Upgrade the CLI dependency first to receive a newer template version; changing hosts requires a migration.
+Refresh also upgrades the selected rate-limit environment and middleware files and installs its unit test, preserving edits through `.new` siblings; merge any listed prerequisites before running the gate.
+The gate runs the suite inside the production server image with the rate limiter off through `RATE_LIMIT_ENABLED=false` in the CI overlay.
 When adopting date versions, replace the former major setting in the preserved `config.sh` with `RELEASE_TIMEZONE=UTC` or your chosen IANA timezone.
-Update a preserved deployment seam to push `RELEASE_IMAGE_SERVER_VERSION` and `RELEASE_IMAGE_WEB_VERSION` when non-empty, as well as the commit image references.
-Refresh preserves the seam, so it cannot add those pushes for you.
+The pipeline now pushes every commit and non-empty version reference through `push.sh` before the seam runs.
+A preserved deployment seam may drop its own pushes and must start `RELEASE_DEPLOY_IMAGE_SERVER` and `RELEASE_DEPLOY_IMAGE_WEB`, the version references when publishing and the commit references otherwise.
+Image repositories move from `<registry>/<environment>/<slug>-server` to `<registry>/<slug>-server-<environment>`, so hosts or registry rules keyed on the old names must change.
 The default seam now delegates to `smoke-deploy.sh`; preserved older seams must build release-stack dependencies before starting with `--no-build`, or call that helper.
 Hotfixes now go on release branches: `RELEASE_BRANCH_PREFIX` replaces `RELEASE_HOTFIX_PREFIX`, and `hotfix/` branches no longer admit anything.
 Scripts use `release/` when the preserved `config.sh` lacks the key; add `RELEASE_BRANCH_PREFIX=release/` there only to change it, and delete a leftover `RELEASE_HOTFIX_PREFIX` line, which no longer has any effect.

@@ -26,6 +26,7 @@ import { $jwt } from "../utils/jwt";
  * in the route's handler array — each runs its own counter.
  *
  * Skipped outside production so dev/test ergonomics aren't affected.
+ * Set RATE_LIMIT_ENABLED=false to disable it in production too.
  */
 
 export type RateLimitKey =
@@ -42,7 +43,8 @@ export function RATE_LIMIT(opts: RateLimitOptions): RequestHandler {
     let resolve = toResolver(opts.key);
 
     return async (req, res, next) => {
-        if ($env.NODE_ENV !== "production") return next();
+        if ($env.NODE_ENV !== "production" || !$env.RATE_LIMIT_ENABLED)
+            return next();
 
         let fragment = resolve(req);
 

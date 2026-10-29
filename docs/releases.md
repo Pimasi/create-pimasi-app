@@ -24,6 +24,7 @@ templates/ci/common/                        both hosts
   scripts/release/version.sh                YYYY-MM-DD.N and T.P
   scripts/release/classify.sh, notes.sh     notes from first-parent history (with notes.awk)
   scripts/release/build.sh                  Docker images for one environment
+  scripts/release/push.sh                   push every built reference before the deploy seam
   scripts/release/deploy.sh                 the seam a project replaces; the default calls smoke-deploy.sh
   scripts/release/verify.sh                 /ping and /ready health checks
   scripts/release/publish.sh                tag, release page, release/<version>
@@ -47,7 +48,7 @@ flowchart TD
     ADMIT --> PREP["read the live record, assign the version if the environment tags, write notes"]
     PREP --> GATE["gate at the SHA"]
     GATE -->|red| FAIL["failed: record unchanged"]
-    GATE --> BUILD["build and deploy.sh"]
+    GATE --> BUILD["build, push and deploy.sh"]
     BUILD --> HEALTH{"/ping reports the SHA and /ready answers 200?"}
     HEALTH -->|no| FAIL
     HEALTH -->|yes| RECORD["deployment record, then move env/name"]
@@ -69,7 +70,7 @@ Around it:
 - **Release branches:** a first-level version gets `release/<version>` once publication confirms its tag. A missing branch is recreated on a later deploy of that version; branches are never deleted, and the hotfixes of one version follow each other on its branch.
 - **Outcomes:** `succeeded`; `succeeded, publication incomplete` (healthy and recorded, but the host refused a tag, release page or branch write, or an environment-page read); `failed` at a stage, with nothing recorded; `rejected`, with nothing built.
 - **Locks:** one `release-<environment>` lock per environment, never cancelled. Tagging environments also share one `release` lock, so they run one at a time.
-- **Images:** `<registry>/<environment>/pimasi-server` and `pimasi-web`, tagged with the commit's first 12 characters and with the version when there is one. Every deploy builds, because the web image bakes in its environment's values.
+- **Images:** `<registry>/pimasi-server-<environment>` and `<registry>/pimasi-web-<environment>`, tagged with the commit's first 12 characters and with the version when there is one. Every deploy builds, because the web image bakes in its environment's values. The pipeline pushes every reference before the seam runs; `RELEASE_DEPLOY_IMAGE_SERVER` and `RELEASE_DEPLOY_IMAGE_WEB` select the version references when publishing and the commit references otherwise.
 - **Environments:** production is given; `npx pimasi env add <name>` creates the rest (`--publish`, `--on-merge`, `--after` or `--before`). They are independent unless linked, and `--after X` accepts only a commit that X runs or has moved past. `env add` and `env remove` also create or delete the host's environment through `gh` or `glab` when they can; otherwise the first deploy creates it.
 
 ## 3. Rules you must not undo
@@ -102,6 +103,10 @@ Scope:
 
 - **Docker only, built per environment:** front-end values stay baked at build time. A replaceable build belongs to a separate PRD.
 - **Docker Compose hosts:** RELEASE.md carries a worked example for deploying with Docker Compose over SSH, not a shipped seam script; a host deploy pins the release image reference in every Compose command and never uses `latest`.
+- **The pipeline pushes, the seam deploys:** `push.sh` pushes every reference `build.sh` wrote, after the build and before the seam, so a project seam never re-implements the push and a refresh can repair it. The seam receives one deploy reference per image, the version tag when the environment publishes and the commit tag otherwise, and the default seam starts that reference.
+- **The gate tests the production image:** the gate boots the server at its production target and runs the suite inside it, so what is tested is what ships. The image keeps its test tooling: pruning it saves no size, because the install layer stays underneath.
+- **The gate runs with the rate limiter off:** the CI overlay sets `RATE_LIMIT_ENABLED=false`, as the reference app does, so older apps' tests keep their 400 answers and counters never carry between runs. The limiter stays production code the gate does not exercise.
+- **Environment in the image name:** images are `<registry>/pimasi-server-<environment>` and `pimasi-web-<environment>`, a suffix rather than a path, so any registry accepts them.
 - **This work:** versioning and the management of versions and environments.
 - **Elsewhere:** releasing this npm package, versions per service and automatic rollback.
 
@@ -109,7 +114,7 @@ Defaults that are easier to revisit:
 
 - **Release logic:** shell inside each app, not a CLI subcommand or outside tools; fixes reach older apps through `add --refresh`.
 - **Host deployment records:** the source of truth, because default tokens can write them without secrets.
-- **Default deployment:** before a project replaces `deploy.sh`, a deploy pushes the images, boots the server on the runner and checks `/ping`, and the outcome says exactly that.
+- **Default deployment:** before a project replaces `deploy.sh`, the default boots the deploy reference on the runner and checks `/ping` and `/ready`, and the outcome says exactly that.
 - **Promotion gate:** the full gate runs again at promotion, trading rollback speed for proof at release time.
 - **Pull request titles:** follow `type(scope): summary`, because the notes group by it.
 

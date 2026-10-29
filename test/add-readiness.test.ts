@@ -159,7 +159,10 @@ for (let satisfied of [true, false]) {
       assert.doesNotMatch(result.output, /Merge before building/);
     } else {
       assert.match(result.output, /Merge before building/);
-      assert.doesNotMatch(result.output, /Merge before your first release/);
+      assert.doesNotMatch(
+        result.output,
+        /Merge before your first gate run or release/,
+      );
     }
   });
 }
@@ -216,7 +219,10 @@ for (let [database, frontend] of [
       assert.equal(readFileSync(join(dir, path), "utf8"), content, path);
       assert.equal(existsSync(join(dir, path + ".new")), false, path);
     }
-    assert.doesNotMatch(result.output, /Merge before your first release/);
+    assert.doesNotMatch(
+      result.output,
+      /Merge before your first gate run or release/,
+    );
   });
 }
 
@@ -236,7 +242,7 @@ test("CI reports an edited process-count test missing its contract", (t) => {
   assert.equal(result.status, 0, result.output);
   assert.equal(readFileSync(join(dir, path), "utf8"), content);
   assert.equal(existsSync(join(dir, path + ".new")), true);
-  assert.match(result.output, /Merge before your first release/);
+  assert.match(result.output, /Merge before your first gate run or release/);
 });
 
 function record(dir: string) {
@@ -291,7 +297,10 @@ for (let [database, host] of [
     for (let [path, content] of originals) {
       assert.equal(readFileSync(join(dir, path), "utf8"), content, path);
     }
-    assert.doesNotMatch(result.output, /Merge before your first release/);
+    assert.doesNotMatch(
+      result.output,
+      /Merge before your first gate run or release/,
+    );
   });
 
   test(`${database}: adding CI reports edited readiness files missing their contracts`, (t) => {
@@ -316,6 +325,6 @@ for (let [database, host] of [
         path,
       );
     }
-    assert.match(result.output, /Merge before your first release/);
+    assert.match(result.output, /Merge before your first gate run or release/);
   });
 }

@@ -1,8 +1,14 @@
 services:
     pimasi-server:
+        build:
+            target: prod
+        command: !reset null
+        develop: !reset null
+        volumes: !reset []
         ports: !reset []
         environment:
             PM2_INSTANCES: "1"
+            RATE_LIMIT_ENABLED: "false"
         healthcheck:
             test: ["CMD", "curl", "-fsS", "http://localhost:4000/ping"]
             interval: 2s

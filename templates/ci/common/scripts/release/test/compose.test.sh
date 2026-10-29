@@ -53,6 +53,12 @@ export COMPOSE_SERVICES
 sh "$release/compose.sh" "$tmp/app" ci up -d --build --wait pimasi-server
 lacks "a removed web service stays absent" 'docker-compose.ci.web.yml' "$(tail -n 1 "$STATE/calls")"
 lacks "the common override does not introduce the web service" 'pimasi-web:' "$(cat "$release/../../docker-compose.ci.yml")"
+contains "the common override selects the production server target" 'target: prod' "$(cat "$release/../../docker-compose.ci.yml")"
+contains "the common override clears the development command" 'command: !reset null' "$(cat "$release/../../docker-compose.ci.yml")"
+contains "the common override clears development watches" 'develop: !reset null' "$(cat "$release/../../docker-compose.ci.yml")"
+contains "the common override clears development volumes" 'volumes: !reset []' "$(cat "$release/../../docker-compose.ci.yml")"
+contains "the release override requires the deploy reference" '${RELEASE_DEPLOY_IMAGE_SERVER:?RELEASE_DEPLOY_IMAGE_SERVER is required}' "$(cat "$release/../../docker-compose.release.yml")"
+contains "the release override enables rate limiting" 'RATE_LIMIT_ENABLED: "true"' "$(cat "$release/../../docker-compose.release.yml")"
 COMPOSE_SERVICES=$(printf 'pimasi-server\npimasi-web')
 export COMPOSE_SERVICES
 sh "$release/compose.sh" "$tmp/app" ci up -d --build --wait pimasi-server

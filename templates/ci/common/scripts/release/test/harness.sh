@@ -237,7 +237,7 @@ case "$1" in
         [ -z "${FAIL_BRANCH_MOVE:-}" ] || exit 1
         git push -q -f origin "$3:refs/heads/$2"
         ;;
-    registry-login) ;;
+    registry-login) [ -z "${FAIL_LOGIN:-}" ] || exit "$FAIL_LOGIN" ;;
     image-prefix) printf 'registry.test/__APP_SLUG__\n' ;;
     summary) cat "$2" >>"$STATE/summary" ;;
     title) printf '%s' "${CHANGE_TITLE:-}" ;;
@@ -261,6 +261,7 @@ case "$1" in
             esac
         done
         ;;
+    push) [ -z "${FAIL_PUSH:-}" ] || exit "$FAIL_PUSH" ;;
     compose)
         for word in "$@"; do
             case "$word" in

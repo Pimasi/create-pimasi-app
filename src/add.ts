@@ -194,11 +194,24 @@ async function isPristine(
       relPath,
       ctx,
     );
-    if (
-      onDisk === pristine ||
-      normalised === (await formatPristine(pristine, relPath, ctx))
-    ) {
-      return true;
+    const variants = [pristine];
+    if (relPath === "apps/server/src/utils/env.ts") {
+      variants.push(pristine.replace(/^.*RATE_LIMIT_ENABLED:.*\n/m, ""));
+    }
+    if (relPath === "apps/server/src/middleware/rate-limit.ts") {
+      variants.push(
+        pristine
+          .replace(/^ \* Set RATE_LIMIT_ENABLED=false.*\n/m, "")
+          .replace(" || !$env.RATE_LIMIT_ENABLED", ""),
+      );
+    }
+    for (const variant of variants) {
+      if (
+        onDisk === variant ||
+        normalised === (await formatPristine(variant, relPath, ctx))
+      ) {
+        return true;
+      }
     }
   }
   return false;
@@ -218,7 +231,7 @@ async function upgradePrerequisite(
   if (
     !formattingOnly &&
     onDisk !== null &&
-    prerequisiteSatisfied(relPath, onDisk)
+    prerequisiteSatisfied(relPath, onDisk, ctx.selections.rateLimit)
   ) {
     return;
   }
@@ -239,7 +252,11 @@ async function upgradePrerequisite(
   }
 }
 
-function prerequisiteSatisfied(relPath: string, content: string): boolean {
+function prerequisiteSatisfied(
+  relPath: string,
+  content: string,
+  rateLimit: boolean,
+): boolean {
   const path = relPath.replaceAll("\\", "/");
   const releaseArguments =
     /^ARG APP_VERSION(?:=|$)/m.test(content) &&
@@ -269,8 +286,12 @@ function prerequisiteSatisfied(relPath: string, content: string): boolean {
       );
     case "apps/server/src/utils/env.ts":
       return (
-        /^\s*APP_VERSION\s*:/m.test(content) && /^\s*GIT_SHA\s*:/m.test(content)
+        /^\s*APP_VERSION\s*:/m.test(content) &&
+        /^\s*GIT_SHA\s*:/m.test(content) &&
+        (!rateLimit || /^\s*RATE_LIMIT_ENABLED\s*:/m.test(content))
       );
+    case "apps/server/src/middleware/rate-limit.ts":
+      return content.includes("!$env.RATE_LIMIT_ENABLED");
     case "apps/server/src/handlers/ping.route.ts":
       return (
         /version:\s*\$env\.APP_VERSION/.test(content) &&
@@ -464,7 +485,9 @@ async function upgradeReleasePrerequisites(
     ".claude/skills/code-review/references/crap-and-mutation.md",
     ".claude/skills/code-review/references/mutation-testing.md",
     "apps/server/src/handlers/auth/password-reset-token.ts",
-    "apps/server/src/middleware/rate-limit.ts",
+    ...(!selections.rateLimit
+      ? ["apps/server/src/middleware/rate-limit.ts"]
+      : []),
     "apps/server/src/test/db-helpers.ts",
     ...(selections.frontend === "tanstack"
       ? [
@@ -487,6 +510,26 @@ async function upgradeReleasePrerequisites(
       "apply the generated Prettier configuration for the CI format gate",
       ctx,
       true,
+    );
+  }
+}
+
+async function upgradeRateLimitPrerequisites(
+  selections: Selections,
+  ctx: ApplyContext,
+): Promise<void> {
+  if (!selections.rateLimit) return;
+  for (const [fragment, relPath] of [
+    [`db/${selections.database}`, "apps/server/src/utils/env.ts"],
+    ["base", "apps/server/src/utils/env.test.ts"],
+    ["server/rate-limit", "apps/server/src/middleware/rate-limit.ts"],
+    ["server/rate-limit", "apps/server/src/middleware/rate-limit.test.ts"],
+  ]) {
+    await upgradePrerequisite(
+      fragment,
+      relPath,
+      "allow and test disabling rate limiting for the CI gate",
+      { ...ctx, selections },
     );
   }
 }
@@ -974,10 +1017,13 @@ export async function runAdd(options: AddOptions): Promise<void> {
 
   const s = spinner();
   s.start(`${options.refresh ? "Refreshing" : "Adding"} ${axes.join(" + ")}`);
-  if (ciFeature && !options.refresh) {
-    await upgradeReleasePrerequisites(after, ctx);
+  if (ciFeature) {
+    if (!options.refresh) await upgradeReleasePrerequisites(after, ctx);
   } else if (fragments.includes("server/redis")) {
     await upgradeReadinessPrerequisites(after, ctx);
+  }
+  if (ciFeature || fragments.includes("server/rate-limit")) {
+    await upgradeRateLimitPrerequisites(after, ctx);
   }
   for (const fragment of fragments) {
     await walkFragment(join(templatesDir, fragment), "", ctx);
@@ -1056,7 +1102,9 @@ export async function runAdd(options: AddOptions): Promise<void> {
   if (report.mergeBeforeRelease.length > 0) {
     note(
       report.mergeBeforeRelease.join("\n"),
-      ciFeature ? "Merge before your first release" : "Merge before building",
+      ciFeature
+        ? "Merge before your first gate run or release"
+        : "Merge before building",
     );
   }
   if (ciFeature) reportReleaseReadiness(options.projectDir);

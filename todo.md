@@ -19,15 +19,16 @@ Work carried over from the trunk-based releases work, so it survives the merge. 
 ```mermaid
 flowchart LR
     Click[Deploy to an environment] --> Build[build.sh: Docker build of server and web for that environment]
-    Build --> Deploy[deploy.sh: replaceable; the default pushes to the host registry]
+    Build --> Push[push.sh: push every built reference to the host registry]
+    Push --> Deploy[deploy.sh: replaceable; start the deploy reference]
     Deploy --> Health[Health check, record, version]
 ```
 
-- **Image refs:** `<registry>/<environment>/pimasi-web:<12-character SHA>`, plus `:<version>` when the environment tags.
-- **Environment in the path:** the web image bakes `VITE_*` or `NEXT_PUBLIC_*` values.
-- **Tags written once:** every deploy builds, and the path stops two builds sharing a tag.
+- **Image refs:** `<registry>/pimasi-web-<environment>:<12-character SHA>` and `<registry>/pimasi-server-<environment>:<12-character SHA>`, plus `:<version>` when the environment tags.
+- **Environment in the image name:** the web image bakes `VITE_*` or `NEXT_PUBLIC_*` values.
+- **Tags pushed again:** same-commit redeploys and rollbacks rebuild and push the same tags again; the environment suffix keeps environments apart. Write-once images belong to the deferred build-once item.
 - **Server bakes only `APP_VERSION` and `GIT_SHA`:** shareable once reuse means pulling, not rebuilding.
-- **The push lives in `deploy.sh`:** the default, via `smoke-deploy.sh`, pushes to the host registry.
+- **The push lives in `push.sh`:** the pipeline pushes to the host registry before the deploy seam runs.
 
 **Release follow-ups.**
 

@@ -15,11 +15,10 @@ RUN npm run build:clean
 RUN chmod +x ./src/cli.ts
 RUN npm i -g
 
-# --- Production: shed the dev toolchain (typescript, vitest, tsx, @types)
+# --- Production target
 FROM dev AS prod
 ENV NODE_ENV=production
 WORKDIR /app
-RUN npm prune --omit=dev
 WORKDIR /app/apps/server
 ARG APP_VERSION=0.0.0
 ARG GIT_SHA=unknown

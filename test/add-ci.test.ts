@@ -38,7 +38,6 @@ function fixture(t: TestContext, host = "none", args: string[] = []) {
     "--ci",
     host,
     "--no-cache",
-    "--no-rate-limit",
     "--no-install",
     "--dir",
     dir,
@@ -141,6 +140,150 @@ for (let host of ["github", "gitlab"]) {
     assertHostFiles(dir, host);
   });
 
+  test(`${host}: adding equals generating without rate limiting`, (t) => {
+    let generated = fixture(t, host, ["--no-rate-limit"]);
+    let added = fixture(t, "none", ["--no-rate-limit"]);
+    record(added);
+    let result = add(added, `ci-${host}`);
+    assert.equal(result.status, 0, result.output);
+    assert.equal(
+      JSON.parse(readFileSync(join(added, "pimasi.json"), "utf8")).rateLimit,
+      false,
+    );
+    let path = "apps/server/src/middleware/rate-limit.ts";
+    assert.equal(
+      readFileSync(join(added, path), "utf8"),
+      rendered("base", path),
+    );
+    assert.equal(
+      existsSync(join(added, "apps/server/src/middleware/rate-limit.test.ts")),
+      false,
+    );
+    assert.deepEqual(
+      files(added).filter((path) => path.endsWith(".new")),
+      [],
+    );
+    assert.deepEqual(tree(added), tree(generated));
+  });
+
+  test(`${host}: edited unformatted rate-limit middleware has one switch merge note`, async (t) => {
+    let database = host === "github" ? "mongo" : "postgres";
+    let dir = fixture(t, "none", ["--db", database]);
+    let path = "apps/server/src/middleware/rate-limit.ts";
+    let content = rendered("server/rate-limit", path)
+      .replace(/^.*RATE_LIMIT_ENABLED:.*\n/m, "")
+      .replace(/^ \* Set RATE_LIMIT_ENABLED=false.*\n/m, "")
+      .replace(" || !$env.RATE_LIMIT_ENABLED", "");
+    content = await format(content, { filepath: path, tabWidth: 4 });
+    content += '\nexport const PROJECT_SETTING   =   "kept";\n';
+    writeFileSync(join(dir, path), content);
+    rmSync(join(dir, "apps/server/src/middleware/rate-limit.test.ts"));
+    record(dir);
+    let result = add(dir, `ci-${host}`);
+    assert.equal(result.status, 0, result.output);
+    assert.equal(readFileSync(join(dir, path), "utf8"), content);
+    assert.equal(existsSync(join(dir, path + ".new")), true);
+    assert.equal(
+      readFileSync(join(dir, path + ".new"), "utf8"),
+      rendered("server/rate-limit", path),
+    );
+    assert.equal(
+      result.output.split(path + ".new").length - 1,
+      1,
+      result.output,
+    );
+    let line = result.output
+      .replaceAll("│", "")
+      .replaceAll(/\s+/g, " ")
+      .split(path + ".new: ")[1];
+    assert.match(
+      line!,
+      /^allow and test disabling rate limiting for the CI gate/,
+    );
+    assert.doesNotMatch(line!, /apply the generated Prettier configuration/);
+  });
+
+  test(`${host}: pristine unformatted rate-limit middleware upgrades in place`, async (t) => {
+    let database = host === "github" ? "mongo" : "postgres";
+    let dir = fixture(t, "none", ["--db", database]);
+    let path = "apps/server/src/middleware/rate-limit.ts";
+    let content = rendered("server/rate-limit", path)
+      .replace(/^.*RATE_LIMIT_ENABLED:.*\n/m, "")
+      .replace(/^ \* Set RATE_LIMIT_ENABLED=false.*\n/m, "")
+      .replace(" || !$env.RATE_LIMIT_ENABLED", "");
+    writeFileSync(
+      join(dir, path),
+      await format(content, { filepath: path, tabWidth: 2 }),
+    );
+    record(dir);
+    let result = add(dir, `ci-${host}`);
+    assert.equal(result.status, 0, result.output);
+    assert.equal(
+      readFileSync(join(dir, path), "utf8"),
+      rendered("server/rate-limit", path),
+    );
+    assert.equal(existsSync(join(dir, path + ".new")), false);
+  });
+
+  for (let refresh of [false, true]) {
+    for (let edited of [false, true]) {
+      test(`${host}: ${refresh ? "refresh" : "add"} migrates the rate-limit switch with edited=${edited}`, async (t) => {
+        let database = host === "github" ? "mongo" : "postgres";
+        let dir = fixture(t, refresh ? host : "none", ["--db", database]);
+        let paths: [string, string][] = [
+          [`db/${database}`, "apps/server/src/utils/env.ts"],
+          ["server/rate-limit", "apps/server/src/middleware/rate-limit.ts"],
+        ];
+        let originals = new Map<string, string>();
+        for (let [fragment, path] of paths) {
+          let content = rendered(fragment, path)
+            .replace(/^.*RATE_LIMIT_ENABLED:.*\n/m, "")
+            .replace(/^ \* Set RATE_LIMIT_ENABLED=false.*\n/m, "")
+            .replace(" || !$env.RATE_LIMIT_ENABLED", "");
+          content = await format(content, { filepath: path, tabWidth: 4 });
+          if (edited) content += '\nexport const PROJECT_SETTING = "kept";\n';
+          originals.set(path, content);
+          writeFileSync(join(dir, path), content);
+        }
+        let testPath = "apps/server/src/middleware/rate-limit.test.ts";
+        rmSync(join(dir, testPath), { force: true });
+        let envTestPath = "apps/server/src/utils/env.test.ts";
+        rmSync(join(dir, envTestPath), { force: true });
+        record(dir);
+        let result = add(dir, `ci-${host}`, refresh ? ["--refresh"] : []);
+        assert.equal(result.status, 0, result.output);
+        for (let [fragment, path] of paths) {
+          assert.equal(
+            readFileSync(join(dir, path), "utf8"),
+            edited ? originals.get(path) : rendered(fragment, path),
+            path,
+          );
+          assert.equal(existsSync(join(dir, path + ".new")), edited, path);
+          if (edited) {
+            assert.equal(
+              readFileSync(join(dir, path + ".new"), "utf8"),
+              rendered(fragment, path),
+              path,
+            );
+          }
+        }
+        assert.equal(
+          readFileSync(join(dir, testPath), "utf8"),
+          rendered("server/rate-limit", testPath),
+        );
+        assert.equal(
+          readFileSync(join(dir, envTestPath), "utf8"),
+          rendered("base", envTestPath),
+        );
+        assert.equal(
+          result.output.includes("Merge before your first gate run or release"),
+          edited,
+          result.output,
+        );
+      });
+    }
+  }
+
   test(`${host}: refresh preserves project-owned files and replaces other fragment files`, (t) => {
     let dir = fixture(t, host);
     let owned = [
@@ -208,6 +351,43 @@ for (let host of ["github", "gitlab"]) {
       assert.equal(
         JSON.parse(readFileSync(join(dir, "pimasi.json"), "utf8")).ci,
         refresh ? host : "none",
+      );
+    });
+  }
+}
+
+for (let database of ["mongo", "postgres"]) {
+  for (let withCi of [false, true]) {
+    test(`${database}: adding rate limiting${withCi ? " with CI" : " alone"} upgrades the old environment`, (t) => {
+      let dir = fixture(t, "none", ["--db", database, "--no-rate-limit"]);
+      let envPath = "apps/server/src/utils/env.ts";
+      writeFileSync(
+        join(dir, envPath),
+        rendered(`db/${database}`, envPath).replace(
+          /^.*RATE_LIMIT_ENABLED:.*\n/m,
+          "",
+        ),
+      );
+      record(dir);
+      let result = add(dir, "rate-limit", withCi ? ["ci-gitlab"] : []);
+      assert.equal(result.status, 0, result.output);
+      assert.equal(
+        readFileSync(join(dir, envPath), "utf8"),
+        rendered(`db/${database}`, envPath),
+      );
+      assert.equal(
+        readFileSync(
+          join(dir, "apps/server/src/middleware/rate-limit.ts"),
+          "utf8",
+        ),
+        rendered(
+          "server/rate-limit",
+          "apps/server/src/middleware/rate-limit.ts",
+        ),
+      );
+      assert.deepEqual(
+        files(dir).filter((path) => path.endsWith(".new")),
+        [],
       );
     });
   }
@@ -373,6 +553,20 @@ for (let host of ["github", "gitlab"]) {
       let result = add(added, `ci-${host}`, args);
       assert.equal(result.status, 0, result.output);
       assert.equal(maintainersOnly(generated), expected);
+      assert.equal(
+        JSON.parse(readFileSync(join(added, "pimasi.json"), "utf8")).rateLimit,
+        true,
+      );
+      assert.equal(
+        readFileSync(
+          join(added, "apps/server/src/middleware/rate-limit.ts"),
+          "utf8",
+        ),
+        rendered(
+          "server/rate-limit",
+          "apps/server/src/middleware/rate-limit.ts",
+        ),
+      );
       assert.deepEqual(tree(added), tree(generated));
     });
   }

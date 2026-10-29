@@ -127,9 +127,13 @@ while :; do
 stage=build
 sh "$here/build.sh" "$name" "$sha" "$version" "$src"
 
+stage=push
+sh "$here/push.sh" "$name" "$sha" "$version"
+
 stage=deploy
 . "$out/images.env"
 export RELEASE_IMAGE_SERVER RELEASE_IMAGE_WEB RELEASE_IMAGE_SERVER_VERSION RELEASE_IMAGE_WEB_VERSION
+export RELEASE_DEPLOY_IMAGE_SERVER RELEASE_DEPLOY_IMAGE_WEB
 (
     umask 077
     deployCredentials=$(mktemp -d "$out/deploy-credentials.XXXXXX")
