@@ -7,6 +7,7 @@ import { resolve } from "path";
 import { execute } from "@pimasi/utils/lib/helpers";
 import { InternalError } from "@pimasi/utils/lib/error";
 import { globSync } from "fs";
+import { CliErrorCode } from "./cli-error-code";
 
 execute(async () => {
     let cli = yargs(process.argv.slice(2));
@@ -28,7 +29,7 @@ execute(async () => {
                                 {
                                     name: module.name,
                                 },
-                                "DUPLICATED_CLI_COMMAND",
+                                CliErrorCode.DUPLICATED_COMMAND,
                             ),
                         );
 

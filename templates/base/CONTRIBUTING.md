@@ -71,6 +71,34 @@ export const InvoiceSchema = Schema.Object({
 
 The payoff: a `snake_case` key signals "this exact name appears on the wire or in the database", so a grep for `created_at` finds every use of the contract field and nothing else. Vendor APIs are external contracts too (Firebase Admin's `errorInfo`, the HTTP `Authorization` header): match their casing at the boundary, `camelCase` internally either way.
 
+### String enums
+
+A closed set of string values is a string `enum`, never a string-literal type. That covers unions (including unions of property names), single-literal discriminants such as `type: "notification"`, schema literals (`Schema.Const`, `Schema.String({ enum })`, OpenAPI `enum` lists) and types derived from `as const`, `keyof typeof` or `typeof` a string constant. Name the enum in singular `PascalCase` and its members in `UPPER_SNAKE_CASE`; each member's value is the string it replaces, so wire formats do not change.
+
+```ts
+// GOOD: the enum holds the strings, and everything else uses its members
+export enum InvoiceStatus {
+    DRAFT = "draft",
+    PAID = "paid",
+}
+
+export const InvoiceStatusSchema = Schema.String({
+    enum: Object.values(InvoiceStatus),
+});
+let isPaid = invoice.status === InvoiceStatus.PAID;
+
+// BAD: raw strings for a closed set
+type InvoiceStatus = "draft" | "paid"; // ❌ string-literal union
+let isPaid = invoice.status === "paid"; // ❌ raw string
+```
+
+- **Members, never raw strings:** compare, assign, pass and `case` on `InvoiceStatus.PAID`. tsc accepts a raw string that matches a member, so check for them in review.
+- **Lists and discriminants:** derive lists with `Object.values(InvoiceStatus)`, whose order is declaration order; discriminate with `Schema.Const(InvoiceStatus.PAID)` in schemas and `status: InvoiceStatus.PAID` in types.
+- **Home:** an enum used by more than one workspace lives in `@pimasi/lib` (`apps/shared/lib/src/values/`); otherwise it sits beside its first use. When that use is a component or route file, the enum gets its own `.ts` module so Fast Refresh keeps working. A test-only enum lives in its test file, or in `apps/server/src/test/` when several server tests share it.
+- **Plain data:** a constant list whose literal types nothing reads, such as SVG path data, takes a `readonly string[]` annotation instead of an enum.
+- **Wire values:** an enum whose values are stored or sent (API fields, JWT claims, queue and socket payloads, stored documents, environment values) is pinned beside its declaration with `wireValues` from `@pimasi/lib/values/wire`: `wireValues(InvoiceStatus, ["draft", "paid"]);`. The pin type-checks only while those raw strings and the enum's values are the same set, and it rejects members in place of strings, so a changed value fails `type-check` until the pin changes with it in the same diff. Those strings are the one place a raw value is correct. Build-tool switches set in package scripts, such as the Cordova build flag, are not pinned.
+- **Exempt:** the raw strings in wire-value pins, key references (`keyof T` of a declared type, `Pick`/`Omit` key arguments, `T["key"]`, `obj[key as keyof typeof obj]`), module specifiers, vendor-mandated literals such as `ComponentProps<"div">`, generated files and completed migrations. A completed migration that a live enum change stops compiling declares a local enum with the live enum's name and members instead of importing it.
+
 ### Implicit / braceless bodies — only when they fit on one line
 
 **Do not use implicit-body syntax (arrow function implicit return, braceless `if` / `else` / `else if`) when the body wraps to a new line or doesn't fit on a single line under 80 characters.** When it doesn't fit, use an explicit block body — `async`/`await` with `{ … }` for arrow functions, `{ … }` for `if`/`else`.
@@ -124,7 +152,7 @@ import { z } from "zod"; // ❌
 import Ajv from "ajv"; // ❌
 ```
 
-Discriminated unions use `Schema.AnyOf([...])` with `Schema.Const("...")` discriminators. `Static<typeof X>` infers the TypeScript type from the schema. Match what existing schemas in `apps/shared/lib/src/schemas/api/*` already do — that is the canonical pattern.
+Discriminated unions use `Schema.AnyOf([...])` with `Schema.Const(Enum.MEMBER)` discriminators, and closed value sets are [string enums](#string-enums). `Static<typeof X>` infers the TypeScript type from the schema. Match what existing schemas in `apps/shared/lib/src/schemas/api/*` already do — that is the canonical pattern.
 
 ## Frontend conventions
 

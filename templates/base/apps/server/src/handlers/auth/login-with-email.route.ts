@@ -1,3 +1,4 @@
+import { RouteMethod } from "../../app/route-values";
 import { Route } from "../../app/route";
 import { BadRequest, Forbidden, Unauthorized } from "@pimasi/utils/lib/error";
 import { dispatchLoginEmail } from "../email/dispatch";
@@ -11,7 +12,7 @@ import { RATE_LIMIT } from "../../middleware/rate-limit";
 import { normaliseEmail } from "../../models/users";
 
 export const LoginWithEmailRoute = Route({
-    method: "post",
+    method: RouteMethod.POST,
     route: "/auth/login-with-email",
     docs: {
         tags: ["Auth"],

@@ -1,10 +1,11 @@
+import { EnvironmentBoolean } from "./env";
 import { describe, expect, it, vi } from "vitest";
 
 describe("rate-limit switch", () => {
     it.each([
         [undefined, true],
-        ["false", false],
-        ["true", true],
+        [EnvironmentBoolean.FALSE, false],
+        [EnvironmentBoolean.TRUE, true],
     ] as const)(
         "reads RATE_LIMIT_ENABLED=%s as %s",
         async (value, expected) => {

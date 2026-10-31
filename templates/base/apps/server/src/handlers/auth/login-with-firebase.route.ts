@@ -1,3 +1,5 @@
+import { RateLimitKey } from "../../middleware/rate-limit-key";
+import { RouteMethod } from "../../app/route-values";
 import { Route } from "../../app/route";
 import { Schema } from "@pimasi/utils/lib/json-schema";
 import {
@@ -19,7 +21,7 @@ import { $logger } from "../../utils/logger";
 import { RATE_LIMIT } from "../../middleware/rate-limit";
 
 export const LoginWithFirebaseRoute = Route({
-    method: "post",
+    method: RouteMethod.POST,
     route: `/auth/login-with-firebase`,
     docs: {
         tags: ["Auth"],
@@ -48,7 +50,7 @@ export const LoginWithFirebaseRoute = Route({
     handler: [
         RATE_LIMIT({
             bucket: "login-fb",
-            key: "ip",
+            key: RateLimitKey.IP,
             max: 30,
             windowSeconds: 60,
         }),

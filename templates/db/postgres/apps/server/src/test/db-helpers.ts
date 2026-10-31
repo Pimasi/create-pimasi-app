@@ -2,7 +2,7 @@ import { Kysely, PostgresDialect, type Selectable } from "kysely";
 import { Pool } from "pg";
 import { ulid } from "ulid";
 import { getenv } from "@pimasi/utils/lib/helpers";
-import { UserRoles } from "@pimasi/lib/values/auth";
+import { UserRole } from "@pimasi/lib/values/auth";
 import type { Database } from "../services/db";
 import type { UserModel } from "../models/users";
 
@@ -20,9 +20,9 @@ function getDb(): Kysely<Database> {
     return _db;
 }
 
-function parseRoles(value: unknown): UserRoles[] {
+function parseRoles(value: unknown): UserRole[] {
     if (typeof value === "string") return JSON.parse(value);
-    return (value as UserRoles[]) ?? [];
+    return (value as UserRole[]) ?? [];
 }
 
 function mapUserRow(row: Selectable<Database["users"]>): UserModel {
@@ -68,7 +68,7 @@ export async function seedUser(
         password_hash: overrides.password_hash,
         firebase_id: overrides.firebase_id,
         disabled_at: overrides.disabled_at ?? null,
-        roles: overrides.roles ?? [UserRoles.USER],
+        roles: overrides.roles ?? [UserRole.USER],
     };
 
     await getDb().insertInto("users").values(userValues(user)).execute();

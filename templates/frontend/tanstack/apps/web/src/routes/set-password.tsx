@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ButtonSize, ButtonVariant } from "@/components/ui/button.values";
 import { Input } from "@/components/ui/input";
 import { $server } from "../services/server";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -82,8 +83,8 @@ function SetPasswordPage() {
 
                 <Button
                     type="submit"
-                    variant="default"
-                    size="lg"
+                    variant={ButtonVariant.DEFAULT}
+                    size={ButtonSize.LG}
                     disabled={loading}
                 >
                     {loading ? "Saving..." : "Set Password"}

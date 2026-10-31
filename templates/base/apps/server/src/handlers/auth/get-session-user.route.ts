@@ -1,10 +1,11 @@
+import { RouteMethod } from "../../app/route-values";
 import { Route } from "../../app/route";
 import { getSessionUserOrFail } from "./get-session-user-or-fail";
 import { $users } from "../../models/users";
 import { SessionUserResponseSchema } from "@pimasi/lib/schemas/api/auth-session-user.schema";
 
 export const GetSessionUserRoute = Route({
-    method: "get",
+    method: RouteMethod.GET,
     route: `/auth/session-user`,
     docs: {
         tags: ["Auth"],

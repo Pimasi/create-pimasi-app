@@ -13,9 +13,25 @@ import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 import { format } from "prettier";
+import {
+  ReleaseBoolean,
+  Command,
+  AddFeature,
+  Ci,
+  Design,
+  Database,
+  Frontend,
+} from "../src/types.js";
+
+enum StdinState {
+  CLOSED = "closed",
+  OPEN = "open",
+}
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
+
 const CLI = join(ROOT, "dist/index.js");
+
 const NAME = "g1-ci";
 
 function command(dir: string, executable: string, args: string[]) {
@@ -28,7 +44,7 @@ function command(dir: string, executable: string, args: string[]) {
   return { status: result.status, output: result.stdout + result.stderr };
 }
 
-function fixture(t: TestContext, host = "none", args: string[] = []) {
+function fixture(t: TestContext, host = Ci.NONE, args: string[] = []) {
   let dir = mkdtempSync(join(tmpdir(), "g1-ci-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   let result = command(dir, process.execPath, [
@@ -49,7 +65,7 @@ function fixture(t: TestContext, host = "none", args: string[] = []) {
 
 function record(dir: string) {
   for (let args of [
-    ["add", "."],
+    [Command.ADD, "."],
     [
       "-c",
       "user.name=g1",
@@ -70,7 +86,7 @@ function record(dir: string) {
 function add(dir: string, feature: string, args: string[] = []) {
   return command(dir, process.execPath, [
     CLI,
-    "add",
+    Command.ADD,
     feature,
     "--yes",
     "--no-install",
@@ -115,10 +131,10 @@ function assertHostFiles(dir: string, host: string) {
       );
     }
   }
-  assert.equal(existsSync(join(dir, ".gitlab-ci.yml")), host === "gitlab");
+  assert.equal(existsSync(join(dir, ".gitlab-ci.yml")), host === Ci.GITLAB);
   assert.equal(
     existsSync(join(dir, ".github/workflows/ci.yml")),
-    host === "github",
+    host === Ci.GITHUB,
   );
   assert.equal(
     JSON.parse(readFileSync(join(dir, "pimasi.json"), "utf8")).ci,
@@ -126,7 +142,7 @@ function assertHostFiles(dir: string, host: string) {
   );
 }
 
-for (let host of ["github", "gitlab"]) {
+for (let host of [Ci.GITHUB, Ci.GITLAB]) {
   test(`${host}: scaffold copies the common and selected host fragments`, (t) => {
     let dir = fixture(t, host);
     assertHostFiles(dir, host);
@@ -142,7 +158,7 @@ for (let host of ["github", "gitlab"]) {
 
   test(`${host}: adding equals generating without rate limiting`, (t) => {
     let generated = fixture(t, host, ["--no-rate-limit"]);
-    let added = fixture(t, "none", ["--no-rate-limit"]);
+    let added = fixture(t, Ci.NONE, ["--no-rate-limit"]);
     record(added);
     let result = add(added, `ci-${host}`);
     assert.equal(result.status, 0, result.output);
@@ -179,13 +195,10 @@ for (let host of ["github", "gitlab"]) {
   });
 
   test(`${host}: edited unformatted rate-limit middleware has one switch merge note`, async (t) => {
-    let database = host === "github" ? "mongo" : "postgres";
-    let dir = fixture(t, "none", ["--db", database]);
+    let database = host === Ci.GITHUB ? Database.MONGO : Database.POSTGRES;
+    let dir = fixture(t, Ci.NONE, ["--db", database]);
     let path = "apps/server/src/middleware/rate-limit.ts";
-    let content = rendered("server/rate-limit", path)
-      .replace(/^.*RATE_LIMIT_ENABLED:.*\n/m, "")
-      .replace(/^ \* Set RATE_LIMIT_ENABLED=false.*\n/m, "")
-      .replace(" || !$env.RATE_LIMIT_ENABLED", "");
+    let content = rendered("legacy/0.2.0/server/rate-limit", path);
     content = await format(content, { filepath: path, tabWidth: 4 });
     content += '\nexport const PROJECT_SETTING   =   "kept";\n';
     writeFileSync(join(dir, path), content);
@@ -216,13 +229,10 @@ for (let host of ["github", "gitlab"]) {
   });
 
   test(`${host}: pristine unformatted rate-limit middleware upgrades in place`, async (t) => {
-    let database = host === "github" ? "mongo" : "postgres";
-    let dir = fixture(t, "none", ["--db", database]);
+    let database = host === Ci.GITHUB ? Database.MONGO : Database.POSTGRES;
+    let dir = fixture(t, Ci.NONE, ["--db", database]);
     let path = "apps/server/src/middleware/rate-limit.ts";
-    let content = rendered("server/rate-limit", path)
-      .replace(/^.*RATE_LIMIT_ENABLED:.*\n/m, "")
-      .replace(/^ \* Set RATE_LIMIT_ENABLED=false.*\n/m, "")
-      .replace(" || !$env.RATE_LIMIT_ENABLED", "");
+    let content = rendered("legacy/0.2.0/server/rate-limit", path);
     writeFileSync(
       join(dir, path),
       await format(content, { filepath: path, tabWidth: 2 }),
@@ -239,19 +249,16 @@ for (let host of ["github", "gitlab"]) {
 
   for (let refresh of [false, true]) {
     for (let edited of [false, true]) {
-      test(`${host}: ${refresh ? "refresh" : "add"} migrates the rate-limit switch with edited=${edited}`, async (t) => {
-        let database = host === "github" ? "mongo" : "postgres";
-        let dir = fixture(t, refresh ? host : "none", ["--db", database]);
+      test(`${host}: ${refresh ? "refresh" : Command.ADD} migrates the rate-limit switch with edited=${edited}`, async (t) => {
+        let database = host === Ci.GITHUB ? Database.MONGO : Database.POSTGRES;
+        let dir = fixture(t, refresh ? host : Ci.NONE, ["--db", database]);
         let paths: [string, string][] = [
           [`db/${database}`, "apps/server/src/utils/env.ts"],
           ["server/rate-limit", "apps/server/src/middleware/rate-limit.ts"],
         ];
         let originals = new Map<string, string>();
         for (let [fragment, path] of paths) {
-          let content = rendered(fragment, path)
-            .replace(/^.*RATE_LIMIT_ENABLED:.*\n/m, "")
-            .replace(/^ \* Set RATE_LIMIT_ENABLED=false.*\n/m, "")
-            .replace(" || !$env.RATE_LIMIT_ENABLED", "");
+          let content = rendered(`legacy/0.2.0/${fragment}`, path);
           content = await format(content, { filepath: path, tabWidth: 4 });
           if (edited) content += '\nexport const PROJECT_SETTING = "kept";\n';
           originals.set(path, content);
@@ -308,7 +315,7 @@ for (let host of ["github", "gitlab"]) {
       "scripts/release/promote.sh",
       "scripts/release/compose-ssh-deploy.sh",
       "scripts/release/host.sh",
-      host === "github" ? ".github/workflows/release.yml" : ".gitlab-ci.yml",
+      host === Ci.GITHUB ? ".github/workflows/release.yml" : ".gitlab-ci.yml",
     ];
     for (let path of [...owned, ...refreshed]) {
       writeFileSync(join(dir, path), "PROJECT_OWNED=true\n");
@@ -344,7 +351,7 @@ for (let host of ["github", "gitlab"]) {
   test(`${host}: an existing host refuses both repeat and switch even with force`, (t) => {
     let dir = fixture(t, host);
     record(dir);
-    for (let requested of ["github", "gitlab"]) {
+    for (let requested of [Ci.GITHUB, Ci.GITLAB]) {
       let result = add(dir, `ci-${requested}`, ["--force"]);
       assert.equal(result.status, 1, result.output);
       assert.match(result.output, /A CI host is already set/);
@@ -353,8 +360,8 @@ for (let host of ["github", "gitlab"]) {
   });
 
   for (let refresh of [false, true]) {
-    test(`${host}: force cannot bypass the clean-tree check for ${refresh ? "refresh" : "add"}`, (t) => {
-      let dir = fixture(t, refresh ? host : "none");
+    test(`${host}: force cannot bypass the clean-tree check for ${refresh ? "refresh" : Command.ADD}`, (t) => {
+      let dir = fixture(t, refresh ? host : Ci.NONE);
       record(dir);
       writeFileSync(join(dir, "project-change.txt"), "uncommitted\n");
       let result = add(dir, `ci-${host}`, [
@@ -366,26 +373,27 @@ for (let host of ["github", "gitlab"]) {
       assert.match(result.output, /--force cannot bypass/);
       assert.equal(
         JSON.parse(readFileSync(join(dir, "pimasi.json"), "utf8")).ci,
-        refresh ? host : "none",
+        refresh ? host : Ci.NONE,
       );
     });
   }
 }
 
-for (let database of ["mongo", "postgres"]) {
+for (let database of [Database.MONGO, Database.POSTGRES]) {
   for (let withCi of [false, true]) {
     test(`${database}: adding rate limiting${withCi ? " with CI" : " alone"} upgrades the old environment`, (t) => {
-      let dir = fixture(t, "none", ["--db", database, "--no-rate-limit"]);
+      let dir = fixture(t, Ci.NONE, ["--db", database, "--no-rate-limit"]);
       let envPath = "apps/server/src/utils/env.ts";
       writeFileSync(
         join(dir, envPath),
-        rendered(`db/${database}`, envPath).replace(
-          /^.*RATE_LIMIT_ENABLED:.*\n/m,
-          "",
-        ),
+        rendered(`legacy/0.2.0/db/${database}`, envPath),
       );
       record(dir);
-      let result = add(dir, "rate-limit", withCi ? ["ci-gitlab"] : []);
+      let result = add(
+        dir,
+        AddFeature.RATE_LIMIT,
+        withCi ? [AddFeature.CI_GITLAB] : [],
+      );
       assert.equal(result.status, 0, result.output);
       assert.equal(
         readFileSync(join(dir, envPath), "utf8"),
@@ -411,7 +419,12 @@ for (let database of ["mongo", "postgres"]) {
 
 for (let formatted of [false, true]) {
   test(`CI upgrades pristine 0.2.0 prerequisites: formatted=${formatted}`, async (t) => {
-    let dir = fixture(t, "none", ["--frontend", "nextjs", "--db", "postgres"]);
+    let dir = fixture(t, Ci.NONE, [
+      "--frontend",
+      Frontend.NEXTJS,
+      "--db",
+      Database.POSTGRES,
+    ]);
     let paths: [string, string][] = [
       ["base", "Dockerfile.server"],
       ["base", "apps/server/process.config.js"],
@@ -430,7 +443,7 @@ for (let formatted of [false, true]) {
       writeFileSync(join(dir, path), content);
     }
     record(dir);
-    let result = add(dir, "ci-github");
+    let result = add(dir, AddFeature.CI_GITHUB);
     assert.equal(result.status, 0, result.output);
     for (let [fragment, path] of paths) {
       assert.equal(
@@ -459,7 +472,7 @@ for (let formatted of [false, true]) {
       writeFileSync(join(dir, path), content);
     }
     record(dir);
-    let result = add(dir, "workers");
+    let result = add(dir, AddFeature.WORKERS);
     assert.equal(result.status, 0, result.output);
     for (let path of paths) {
       assert.equal(
@@ -498,11 +511,11 @@ function scaffoldArgs(dir: string, host: string) {
     CLI,
     NAME,
     "--frontend",
-    "tanstack",
+    Frontend.TANSTACK,
     "--db",
-    "mongo",
+    Database.MONGO,
     "--design",
-    "shadcn",
+    Design.SHADCN,
     "--ci",
     host,
     "--no-cordova",
@@ -556,11 +569,11 @@ async function prompted(
   return { status, output, asked };
 }
 
-for (let host of ["github", "gitlab"]) {
+for (let host of [Ci.GITHUB, Ci.GITLAB]) {
   for (let [args, expected] of [
-    [[], "true"],
-    [["--maintainers-only"], "true"],
-    [["--no-maintainers-only"], "false"],
+    [[], ReleaseBoolean.TRUE],
+    [["--maintainers-only"], ReleaseBoolean.TRUE],
+    [["--no-maintainers-only"], ReleaseBoolean.FALSE],
   ] as [string[], string][]) {
     test(`${host}: ${args[0] ?? "the --yes default"} writes RELEASE_MAINTAINERS_ONLY=${expected} and adding equals generating`, (t) => {
       let generated = fixture(t, host, args);
@@ -589,8 +602,8 @@ for (let host of ["github", "gitlab"]) {
 }
 
 for (let [host, answer, expected] of [
-  ["github", "\r", "true"],
-  ["gitlab", "n\r", "false"],
+  [Ci.GITHUB, "\r", ReleaseBoolean.TRUE],
+  [Ci.GITLAB, "n\r", ReleaseBoolean.FALSE],
 ]) {
   test(`${host}: the wizard asks "${QUESTION}" and writes ${expected} for ${answer === "\r" ? "the default" : "no"}`, async (t) => {
     let dir = mkdtempSync(join(tmpdir(), "g1-ci-"));
@@ -607,7 +620,7 @@ for (let [host, answer, expected] of [
     let result = await prompted(
       t,
       dir,
-      [CLI, "add", `ci-${host}`, "--no-install"],
+      [CLI, Command.ADD, `ci-${host}`, "--no-install"],
       answer,
     );
     assert.equal(result.status, 0, result.output);
@@ -616,20 +629,20 @@ for (let [host, answer, expected] of [
   });
 }
 
-for (let host of ["github", "gitlab"]) {
-  for (let stdin of ["closed", "open"]) {
+for (let host of [Ci.GITHUB, Ci.GITLAB]) {
+  for (let stdin of Object.values(StdinState)) {
     test(`${host}: add ci-${host} with stdin ${stdin} and no terminal takes the default and says so`, async (t) => {
       let dir = fixture(t);
       record(dir);
       let child = spawn(
         process.execPath,
-        [CLI, "add", `ci-${host}`, "--no-install"],
+        [CLI, Command.ADD, `ci-${host}`, "--no-install"],
         { cwd: dir, stdio: ["pipe", "pipe", "pipe"] },
       );
       let output = "";
       let timer = setTimeout(() => child.kill("SIGKILL"), 30000);
       child.stdin.on("error", () => {});
-      if (stdin === "closed") child.stdin.end();
+      if (stdin === StdinState.CLOSED) child.stdin.end();
       child.stdout.on("data", (chunk) => {
         output += chunk;
       });
@@ -647,7 +660,7 @@ for (let host of ["github", "gitlab"]) {
         output,
         /No terminal to ask "Only Maintainers can release\?", so add uses the default, yes; pass --maintainers-only or --no-maintainers-only to choose\./,
       );
-      assert.equal(maintainersOnly(dir), "true");
+      assert.equal(maintainersOnly(dir), ReleaseBoolean.TRUE);
       assertHostFiles(dir, host);
     });
   }
@@ -656,7 +669,7 @@ for (let host of ["github", "gitlab"]) {
 test(`the wizard does not ask "${QUESTION}" without a CI host`, async (t) => {
   let dir = mkdtempSync(join(tmpdir(), "g1-ci-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  let result = await prompted(t, dir, scaffoldArgs(dir, "none"), "\r");
+  let result = await prompted(t, dir, scaffoldArgs(dir, Ci.NONE), "\r");
   assert.equal(result.status, 0, result.output);
   assert.equal(result.asked, false, result.output);
   assert.equal(maintainersOnly(dir), undefined);
@@ -671,7 +684,7 @@ test("the Maintainer-only flags need a CI host when scaffolding", (t) => {
       NAME,
       "--yes",
       "--ci",
-      "none",
+      Ci.NONE,
       "--no-install",
       "--dir",
       dir,
@@ -689,7 +702,7 @@ test("the Maintainer-only flags need a CI host when scaffolding", (t) => {
 test("the Maintainer-only flags apply only when adding a CI host", (t) => {
   let lean = fixture(t);
   record(lean);
-  let result = add(lean, "workers", ["--maintainers-only"]);
+  let result = add(lean, AddFeature.WORKERS, ["--maintainers-only"]);
   assert.equal(result.status, 1, result.output);
   assert.match(
     result.output,
@@ -699,13 +712,16 @@ test("the Maintainer-only flags apply only when adding a CI host", (t) => {
     JSON.parse(readFileSync(join(lean, "pimasi.json"), "utf8")).workers,
     false,
   );
-  let hosted = fixture(t, "github");
+  let hosted = fixture(t, Ci.GITHUB);
   record(hosted);
-  result = add(hosted, "ci-github", ["--refresh", "--no-maintainers-only"]);
+  result = add(hosted, AddFeature.CI_GITHUB, [
+    "--refresh",
+    "--no-maintainers-only",
+  ]);
   assert.equal(result.status, 1, result.output);
   assert.match(
     result.output,
     /--maintainers-only and --no-maintainers-only apply only when adding ci-github or ci-gitlab/,
   );
-  assert.equal(maintainersOnly(hosted), "true");
+  assert.equal(maintainersOnly(hosted), ReleaseBoolean.TRUE);
 });

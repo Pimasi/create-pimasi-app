@@ -1,10 +1,23 @@
+import { wireValues } from "@pimasi/lib/values/wire";
 import { getenv } from "@pimasi/utils/lib/helpers";
 
-const VALID_NODE_ENVS = ["production", "development", "test"] as const;
-type NodeEnv = (typeof VALID_NODE_ENVS)[number];
+export enum NodeEnv {
+    PRODUCTION = "production",
+    DEVELOPMENT = "development",
+    TEST = "test",
+}
+wireValues(NodeEnv, ["production", "development", "test"]);
+
+export enum EnvironmentBoolean {
+    FALSE = "false",
+    TRUE = "true",
+}
+wireValues(EnvironmentBoolean, ["false", "true"]);
+
+const VALID_NODE_ENVS = Object.values(NodeEnv);
 
 function validateNodeEnv(): NodeEnv {
-    let value = process.env.NODE_ENV ?? "development";
+    let value = process.env.NODE_ENV ?? NodeEnv.DEVELOPMENT;
     if (!VALID_NODE_ENVS.includes(value as NodeEnv)) {
         throw new Error(
             `Invalid NODE_ENV "${value}" — expected one of: ${VALID_NODE_ENVS.join(", ")}`,
@@ -25,7 +38,8 @@ export const $env = {
     PORT: Number(process.env.PORT ?? 3000),
     JWT_SECRET: getenv("JWT_SECRET"),
     REDIS_URL: process.env.REDIS_URL ?? "",
-    RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED !== "false",
+    RATE_LIMIT_ENABLED:
+        process.env.RATE_LIMIT_ENABLED !== EnvironmentBoolean.FALSE,
     NOTIFICATION_URL: process.env.NOTIFICATION_URL,
     TEST_URL: process.env.TEST_URL,
 

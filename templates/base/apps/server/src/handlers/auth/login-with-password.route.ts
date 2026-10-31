@@ -1,3 +1,4 @@
+import { RouteMethod } from "../../app/route-values";
 import { Route } from "../../app/route";
 import { Schema } from "@pimasi/utils/lib/json-schema";
 import { Forbidden, Unauthorized } from "@pimasi/utils/lib/error";
@@ -12,7 +13,7 @@ import { ErrorResponseSchema } from "@pimasi/lib/schemas/api/error.schema";
 import { RATE_LIMIT } from "../../middleware/rate-limit";
 
 export const LoginWithPasswordRoute = Route({
-    method: "post",
+    method: RouteMethod.POST,
     route: "/auth/login-with-password",
     docs: {
         tags: ["Auth"],

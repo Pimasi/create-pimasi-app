@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ButtonSize, ButtonVariant } from "@/components/ui/button.values";
 import { Input } from "@/components/ui/input";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useAuth } from "@/hooks/use-auth";
@@ -76,8 +77,8 @@ export default function SetPasswordPage() {
 
                 <Button
                     type="submit"
-                    variant="default"
-                    size="lg"
+                    variant={ButtonVariant.DEFAULT}
+                    size={ButtonSize.LG}
                     disabled={loading}
                 >
                     {loading ? "Saving..." : "Set Password"}

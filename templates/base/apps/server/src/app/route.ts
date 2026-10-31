@@ -1,8 +1,9 @@
+import { RouteMethod, ParameterLocation } from "./route-values";
 import { JsonSchema } from "@pimasi/utils/lib/json-schema";
 import { Request, Response, RequestHandler } from "express";
 
 export interface Route {
-    method: "post" | "get" | "put" | "patch" | "delete";
+    method: RouteMethod;
     route: string;
     handler: RequestHandler | RequestHandler[];
     docs?: {
@@ -20,7 +21,7 @@ export interface Route {
         security?: boolean;
         deprecated?: boolean;
         parameters?: {
-            in: "path" | "query" | "header";
+            in: ParameterLocation;
             name: string;
             required?: true;
             schema?: JsonSchema;
@@ -43,7 +44,7 @@ export interface Route {
 }
 
 export class RouteClass {
-    public method: "post" | "get" | "put" | "patch" | "delete";
+    public method: RouteMethod;
     public route: string;
     public handler: RequestHandler | RequestHandler[];
     public docs?: Route["docs"];

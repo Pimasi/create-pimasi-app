@@ -11,8 +11,8 @@ import {
 import type {
     WSEvent,
     WSEventByType,
-    WSEventType,
 } from "@pimasi/lib/schemas/api/ws-events.schema";
+import type { WSEventType } from "@pimasi/lib/values/ws-events";
 import { $token } from "@/lib/token-storage";
 import {
     addMessageHandler,

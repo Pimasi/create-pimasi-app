@@ -1,11 +1,11 @@
+import { RateLimitKey } from "./rate-limit-key";
 import { Request, RequestHandler } from "express";
 
-export type RateLimitKey =
-    "ip" | "auth-token" | ((req: Request) => string | null | undefined);
+export { RateLimitKey } from "./rate-limit-key";
 
 export interface RateLimitOptions {
     bucket: string;
-    key: RateLimitKey;
+    key: RateLimitKey | ((req: Request) => string | null | undefined);
     max: number;
     windowSeconds: number;
 }

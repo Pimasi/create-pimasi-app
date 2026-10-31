@@ -22,6 +22,32 @@ import {
 import pc from "picocolors";
 import { RELEASE_CONFIG } from "./compose.js";
 import { MANIFEST_FILENAME, readManifest } from "./generate.js";
+import {
+  ReservedEnvironment,
+  ReleaseBoolean,
+  Command,
+  Ci,
+  wireValues,
+} from "./types.js";
+
+export enum DisplayValue {
+  YES = "yes",
+  NO = "no",
+  SET = "set",
+  UNSET = "unset",
+  UNKNOWN = "unknown",
+  EXISTS = "exists",
+  NOT_YET_CREATED = "not yet created",
+}
+wireValues(DisplayValue, [
+  "yes",
+  "no",
+  "set",
+  "unset",
+  "unknown",
+  "exists",
+  "not yet created",
+]);
 
 const ENVIRONMENT_DIR = "scripts/release/environments";
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
@@ -32,12 +58,25 @@ const VALUE_PATTERN = /^("(?:\\.|[^"\\])*"|'[^']*'|[^ \t"']*)([ \t]*(?:#.*)?)$/;
 const PREREQUISITE_MESSAGE =
   'Run "pimasi add ci-github" or "pimasi add ci-gitlab" first; environments require a CI host and scripts/release/environments/production.env.';
 
-type ReleaseKey =
-  | "RELEASE_PUBLISH"
-  | "RELEASE_HEALTH_URL"
-  | "RELEASE_AFTER"
-  | "RELEASE_ON_MERGE";
-type Relation = "independent" | "before" | "after";
+export enum ReleaseKey {
+  PUBLISH = "RELEASE_PUBLISH",
+  HEALTH_URL = "RELEASE_HEALTH_URL",
+  AFTER = "RELEASE_AFTER",
+  ON_MERGE = "RELEASE_ON_MERGE",
+}
+wireValues(ReleaseKey, [
+  "RELEASE_PUBLISH",
+  "RELEASE_HEALTH_URL",
+  "RELEASE_AFTER",
+  "RELEASE_ON_MERGE",
+]);
+
+export enum Relation {
+  INDEPENDENT = "independent",
+  BEFORE = "before",
+  AFTER = "after",
+}
+wireValues(Relation, ["independent", "before", "after"]);
 
 interface Environment {
   content: string;
@@ -53,8 +92,8 @@ interface HostEnvironment {
   state?: string;
 }
 
-function hostAccess(projectDir: string, ci: "github" | "gitlab") {
-  let tool = ci === "github" ? "gh" : "glab";
+function hostAccess(projectDir: string, ci: Ci.GITHUB | Ci.GITLAB) {
+  let tool = ci === Ci.GITHUB ? "gh" : "glab";
   let remote = spawnSync("git", ["remote", "get-url", "origin"], {
     cwd: projectDir,
     encoding: "utf8",
@@ -73,7 +112,7 @@ function hostAccess(projectDir: string, ci: "github" | "gitlab") {
     throw new Error("no project in origin remote");
   }
   let endpoint =
-    ci === "github"
+    ci === Ci.GITHUB
       ? `repos/${project}`
       : `projects/${encodeURIComponent(project)}`;
   let call = (path: string, method = "GET", args: string[] = []) => {
@@ -111,11 +150,11 @@ function hostAccess(projectDir: string, ci: "github" | "gitlab") {
     let output = call(
       path,
       "GET",
-      ci === "github"
+      ci === Ci.GITHUB
         ? ["--paginate", "--slurp"]
         : ["--paginate", "--output", "ndjson"],
     );
-    if (ci === "github") {
+    if (ci === Ci.GITHUB) {
       return JSON.parse(output).flatMap(
         (page: { environments: HostEnvironment[] }) => page.environments,
       );
@@ -136,8 +175,8 @@ function hostAccess(projectDir: string, ci: "github" | "gitlab") {
 
 function changeHost(
   projectDir: string,
-  ci: "github" | "gitlab",
-  command: "add" | "remove",
+  ci: Ci.GITHUB | Ci.GITLAB,
+  command: Command.ADD | Command.REMOVE,
   name: string,
 ): string {
   let changed = false;
@@ -146,16 +185,16 @@ function changeHost(
     let existing = host
       .environments()
       .find((environment) => environment.name === name);
-    if (command === "add") {
+    if (command === Command.ADD) {
       if (existing) return `Host environment "${name}" already exists.`;
       host.call(
-        ci === "github" ? `environments/${name}` : "environments",
-        ci === "github" ? "PUT" : "POST",
-        ci === "github" ? [] : ["--raw-field", `name=${name}`],
+        ci === Ci.GITHUB ? `environments/${name}` : "environments",
+        ci === Ci.GITHUB ? "PUT" : "POST",
+        ci === Ci.GITHUB ? [] : ["--raw-field", `name=${name}`],
       );
       return `Created host environment "${name}".`;
     }
-    if (ci === "gitlab") {
+    if (ci === Ci.GITLAB) {
       let variables = host.list("variables?per_page=100") as {
         key: string;
         environment_scope: string;
@@ -177,18 +216,21 @@ function changeHost(
       }
     }
     if (!existing) {
-      return ci === "github"
+      return ci === Ci.GITHUB
         ? `Host environment "${name}" is not yet created.`
         : `Host environment "${name}" is not yet created; its exact-scope project variables were removed where present.`;
     }
-    host.call(`environments/${ci === "github" ? name : existing.id}`, "DELETE");
+    host.call(
+      `environments/${ci === Ci.GITHUB ? name : existing.id}`,
+      "DELETE",
+    );
     return `Deleted host environment "${name}" and its host-side secrets.`;
   } catch (error) {
     let reason =
       error instanceof SyntaxError || error instanceof TypeError
         ? "the host configuration could not be read"
         : (error as Error).message;
-    return command === "add"
+    return command === Command.ADD
       ? `Host environment "${name}" could not be created (${reason}); the first promotion will create it.`
       : `The host environment "${name}" is left in place (${reason}); ${changed ? "its configuration may be partly removed" : "remove it on the host when available"}.`;
   }
@@ -239,11 +281,11 @@ function assignments(content: string, name: string) {
 }
 
 function readValues(content: string, name: string): Record<ReleaseKey, string> {
-  let values = {
-    RELEASE_PUBLISH: "false",
+  let values: Record<ReleaseKey, string> = {
+    RELEASE_PUBLISH: ReleaseBoolean.FALSE,
     RELEASE_HEALTH_URL: "",
     RELEASE_AFTER: "",
-    RELEASE_ON_MERGE: "false",
+    RELEASE_ON_MERGE: ReleaseBoolean.FALSE,
   };
   for (let match of assignments(content, name)) {
     if (!Object.hasOwn(values, match[2])) continue;
@@ -257,13 +299,21 @@ function readValues(content: string, name: string): Record<ReleaseKey, string> {
     }
     values[match[2] as ReleaseKey] = value;
   }
-  if (!["", "true", "false"].includes(values.RELEASE_PUBLISH)) {
+  if (
+    !["", ReleaseBoolean.TRUE, ReleaseBoolean.FALSE].includes(
+      values.RELEASE_PUBLISH,
+    )
+  ) {
     fail(`${name}.env: RELEASE_PUBLISH must be true or false.`);
   }
   if (values.RELEASE_AFTER && validateName(values.RELEASE_AFTER)) {
     fail(`${name}.env: RELEASE_AFTER must name an environment literally.`);
   }
-  if (!["", "true", "false"].includes(values.RELEASE_ON_MERGE)) {
+  if (
+    !["", ReleaseBoolean.TRUE, ReleaseBoolean.FALSE].includes(
+      values.RELEASE_ON_MERGE,
+    )
+  ) {
     fail(`${name}.env: RELEASE_ON_MERGE must be true or false.`);
   }
   return values;
@@ -327,10 +377,10 @@ function maintainersOnly(projectDir: string): boolean {
   )) {
     value = match[2];
   }
-  return value === "true";
+  return value === ReleaseBoolean.TRUE;
 }
 
-function nextSteps(ci: "github" | "gitlab", name: string): void {
+function nextSteps(ci: Ci.GITHUB | Ci.GITLAB, name: string): void {
   note(
     [
       `Edit the placeholders in ${ENVIRONMENT_DIR}/${name}.env.`,
@@ -338,7 +388,7 @@ function nextSteps(ci: "github" | "gitlab", name: string): void {
       "Commit the environment files on main before promoting.",
       "git fetch origin main",
       "SHA=$(git rev-parse origin/main)",
-      ci === "github"
+      ci === Ci.GITHUB
         ? `gh workflow run release.yml --ref main -f sha="$SHA" -f environment=${name}`
         : `glab ci run --branch main --input "sha:$SHA" --input "environment:${name}"`,
     ].join("\n"),
@@ -373,26 +423,30 @@ export async function runEnv(
       return;
     }
     let [command, name] = positionals;
-    if (!["list", "add", "remove"].includes(command)) {
+    if (
+      !(
+        [Command.LIST, Command.ADD, Command.REMOVE] as readonly string[]
+      ).includes(command)
+    ) {
       fail("Specify an environment command: pimasi env list|add|remove.");
     }
-    if (positionals.length > (command === "list" ? 1 : 2)) {
+    if (positionals.length > (command === Command.LIST ? 1 : 2)) {
       fail(`Too many arguments for pimasi env ${command}.`);
     }
     if (values.after !== undefined && values.before !== undefined) {
       fail("Choose either --after or --before, not both.");
     }
-    if (command !== "add" && values["on-merge"] !== undefined) {
+    if (command !== Command.ADD && values["on-merge"] !== undefined) {
       fail("--on-merge is only valid with pimasi env add.");
     }
-    if (command !== "add" && values.publish !== undefined) {
+    if (command !== Command.ADD && values.publish !== undefined) {
       fail("--publish is only valid with pimasi env add.");
     }
-    if (command !== "remove" && values["keep-host"] !== undefined) {
+    if (command !== Command.REMOVE && values["keep-host"] !== undefined) {
       fail("--keep-host is only valid with pimasi env remove.");
     }
     if (
-      command !== "add" &&
+      command !== Command.ADD &&
       (values.after !== undefined || values.before !== undefined)
     ) {
       fail("--after and --before are only valid with pimasi env add.");
@@ -402,12 +456,14 @@ export async function runEnv(
       fail(`No ${MANIFEST_FILENAME} found here. ${PREREQUISITE_MESSAGE}`);
     }
     if (
-      !["github", "gitlab"].includes(manifest.ci ?? "") ||
+      !([Ci.GITHUB, Ci.GITLAB] as readonly string[]).includes(
+        manifest.ci ?? "",
+      ) ||
       !existsSync(join(projectDir, ENVIRONMENT_DIR, "production.env"))
     ) {
       fail(PREREQUISITE_MESSAGE);
     }
-    let ci = manifest.ci as "github" | "gitlab";
+    let ci = manifest.ci as Ci.GITHUB | Ci.GITLAB;
     let environments = new Map<string, Environment>();
     let snapshot = new Map<string, string>();
     for (let file of readdirSync(join(projectDir, ENVIRONMENT_DIR)).sort()) {
@@ -424,13 +480,13 @@ export async function runEnv(
       environments.set(environmentName, {
         content,
         after: settings.RELEASE_AFTER,
-        publishes: settings.RELEASE_PUBLISH === "true",
+        publishes: settings.RELEASE_PUBLISH === ReleaseBoolean.TRUE,
         health: settings.RELEASE_HEALTH_URL !== "",
-        onMerge: settings.RELEASE_ON_MERGE === "true",
+        onMerge: settings.RELEASE_ON_MERGE === ReleaseBoolean.TRUE,
       });
     }
     assertRelations(environments);
-    if (command === "list") {
+    if (command === Command.LIST) {
       let hostEnvironments: HostEnvironment[] | undefined;
       try {
         hostEnvironments = hostAccess(projectDir, ci).environments();
@@ -447,16 +503,18 @@ export async function runEnv(
         ],
         ...[...environments].map(([environmentName, environment]) => [
           environmentName,
-          environmentName === "production" ? "yes" : "no",
-          environment.publishes ? "yes" : "no",
-          environment.after || "independent",
-          environment.health ? "set" : "unset",
-          environment.onMerge ? "yes" : "no",
+          environmentName === ReservedEnvironment.PRODUCTION
+            ? DisplayValue.YES
+            : DisplayValue.NO,
+          environment.publishes ? DisplayValue.YES : DisplayValue.NO,
+          environment.after || Relation.INDEPENDENT,
+          environment.health ? DisplayValue.SET : DisplayValue.UNSET,
+          environment.onMerge ? DisplayValue.YES : DisplayValue.NO,
           hostEnvironments === undefined
-            ? "unknown"
+            ? DisplayValue.UNKNOWN
             : hostEnvironments.some((host) => host.name === environmentName)
-              ? "exists"
-              : "not yet created",
+              ? DisplayValue.EXISTS
+              : DisplayValue.NOT_YET_CREATED,
         ]),
       ];
       let widths = rows[0].map((_, column) =>
@@ -472,21 +530,21 @@ export async function runEnv(
           )
           .join("\n"),
       );
-      nextSteps(ci, "production");
+      nextSteps(ci, ReservedEnvironment.PRODUCTION);
       outro("Done.");
       return;
     }
     let relation: Relation =
       values.before !== undefined
-        ? "before"
+        ? Relation.BEFORE
         : values.after !== undefined
-          ? "after"
-          : "independent";
+          ? Relation.AFTER
+          : Relation.INDEPENDENT;
     let target = values.before ?? values.after;
     let interactive = !values.yes && Boolean(process.stdin.isTTY);
     let onMerge = values["on-merge"] ?? false;
     let publish = values.publish ?? false;
-    if (command === "add" && interactive) {
+    if (command === Command.ADD && interactive) {
       name = answer(
         await text({
           message: "Environment name?",
@@ -497,21 +555,21 @@ export async function runEnv(
     }
     let nameError = validateName(name);
     if (nameError) fail(`${nameError} Use pimasi env ${command} <name> --yes.`);
-    if (name === "production") {
+    if (name === ReservedEnvironment.PRODUCTION) {
       fail(
-        `Production is the given environment and cannot be ${command === "add" ? "added" : "removed"}.`,
+        `Production is the given environment and cannot be ${command === Command.ADD ? "added" : "removed"}.`,
       );
     }
-    if (command === "add" && environments.has(name)) {
+    if (command === Command.ADD && environments.has(name)) {
       fail(
         `Environment "${name}" already exists; its file will not be overwritten.`,
       );
     }
-    if (command === "remove" && !environments.has(name)) {
+    if (command === Command.REMOVE && !environments.has(name)) {
       fail(`Unknown environment "${name}".`);
     }
     if (
-      command === "remove" &&
+      command === Command.REMOVE &&
       environments.get(name)!.publishes &&
       !values["keep-host"]
     ) {
@@ -519,32 +577,32 @@ export async function runEnv(
         `Removing a publishing environment could erase release records; use --keep-host to remove "${name}" locally.`,
       );
     }
-    if (command === "add" && target !== undefined) {
+    if (command === Command.ADD && target !== undefined) {
       if (target === name) {
         fail(`Environment relation cycle: ${name} -> ${name}.`);
       }
       if (!environments.has(target)) fail(`Unknown environment "${target}".`);
     }
-    if (command === "add" && interactive) {
+    if (command === Command.ADD && interactive) {
       relation = answer(
         await select<Relation>({
           message: "How does this environment relate to the others?",
           initialValue: relation,
           options: [
             {
-              value: "independent",
+              value: Relation.INDEPENDENT,
               label: "Independent",
               hint: "promote in any order",
             },
-            { value: "before", label: "Before an environment" },
-            { value: "after", label: "After an environment" },
+            { value: Relation.BEFORE, label: "Before an environment" },
+            { value: Relation.AFTER, label: "After an environment" },
           ],
         }),
       );
-      if (relation !== "independent") {
+      if (relation !== Relation.INDEPENDENT) {
         target = answer(
           await select({
-            message: `${relation === "before" ? "Before" : "After"} which environment?`,
+            message: `${relation === Relation.BEFORE ? "Before" : "After"} which environment?`,
             initialValue: target,
             options: [...environments.keys()].map((environmentName) => ({
               value: environmentName,
@@ -567,7 +625,7 @@ export async function runEnv(
       );
     }
     if (
-      command === "remove" &&
+      command === Command.REMOVE &&
       !interactive &&
       !values.yes &&
       !values["keep-host"]
@@ -576,7 +634,7 @@ export async function runEnv(
         "Removing host-side secrets needs confirmation; use --yes or --keep-host.",
       );
     }
-    if (command === "remove" && interactive) {
+    if (command === Command.REMOVE && interactive) {
       if (
         !answer(
           await confirm({
@@ -594,8 +652,8 @@ export async function runEnv(
     let changes = new Map<string, string>();
     let reports: string[] = [];
     let path = join(projectDir, ENVIRONMENT_DIR, `${name}.env`);
-    if (command === "add") {
-      if (relation !== "independent") {
+    if (command === Command.ADD) {
+      if (relation !== Relation.INDEPENDENT) {
         if (target === name) {
           fail(`Environment relation cycle: ${name} -> ${name}.`);
         }
@@ -604,20 +662,24 @@ export async function runEnv(
         }
       }
       let after =
-        relation === "after"
+        relation === Relation.AFTER
           ? target!
-          : relation === "before"
+          : relation === Relation.BEFORE
             ? environments.get(target!)!.after
             : "";
-      let content = environments.get("production")!.content;
+      let content = environments.get(ReservedEnvironment.PRODUCTION)!.content;
       content = setValue(
         content,
-        "RELEASE_PUBLISH",
-        publish ? "true" : "false",
+        ReleaseKey.PUBLISH,
+        publish ? ReleaseBoolean.TRUE : ReleaseBoolean.FALSE,
       );
-      content = setValue(content, "RELEASE_HEALTH_URL", "");
-      content = setValue(content, "RELEASE_AFTER", after || null);
-      content = setValue(content, "RELEASE_ON_MERGE", onMerge ? "true" : null);
+      content = setValue(content, ReleaseKey.HEALTH_URL, "");
+      content = setValue(content, ReleaseKey.AFTER, after || null);
+      content = setValue(
+        content,
+        ReleaseKey.ON_MERGE,
+        onMerge ? ReleaseBoolean.TRUE : null,
+      );
       environments.set(name, {
         content,
         after,
@@ -625,12 +687,12 @@ export async function runEnv(
         health: false,
         onMerge,
       });
-      if (relation === "before") {
+      if (relation === Relation.BEFORE) {
         let following = environments.get(target!)!;
         following.after = name;
         changes.set(
           target!,
-          setValue(following.content, "RELEASE_AFTER", name),
+          setValue(following.content, ReleaseKey.AFTER, name),
         );
         reports.push(
           after
@@ -652,7 +714,7 @@ export async function runEnv(
         following.after = after;
         changes.set(
           followingName,
-          setValue(following.content, "RELEASE_AFTER", after || null),
+          setValue(following.content, ReleaseKey.AFTER, after || null),
         );
         reports.push(
           after
@@ -679,7 +741,7 @@ export async function runEnv(
         "Environment files changed while the command was open. Run it again.",
       );
     }
-    if (command === "add") {
+    if (command === Command.ADD) {
       writeFileSync(path, environments.get(name)!.content, { flag: "wx" });
       log.success(`Created ${ENVIRONMENT_DIR}/${name}.env`);
     }
@@ -690,22 +752,34 @@ export async function runEnv(
       );
       log.success(`Changed ${ENVIRONMENT_DIR}/${changedName}.env`);
     }
-    if (command === "remove") {
+    if (command === Command.REMOVE) {
       unlinkSync(path);
       log.success(`Deleted ${ENVIRONMENT_DIR}/${name}.env`);
     }
     reports.push(
-      command === "remove" && values["keep-host"]
+      command === Command.REMOVE && values["keep-host"]
         ? `The host environment "${name}" and its configuration are left in place.`
-        : changeHost(projectDir, ci, command as "add" | "remove", name),
+        : changeHost(
+            projectDir,
+            ci,
+            command as Command.ADD | Command.REMOVE,
+            name,
+          ),
     );
     for (let report of reports) log.info(report);
-    if (command === "add" && ci === "github" && maintainersOnly(projectDir)) {
+    if (
+      command === Command.ADD &&
+      ci === Ci.GITHUB &&
+      maintainersOnly(projectDir)
+    ) {
       log.warn(
         `Maintainer-only releases are on: add RELEASE_TOKEN as a secret on the ${name} environment in GitHub and allow deployments to it only from main; see "Maintainer-only releases" in RELEASE.md.`,
       );
     }
-    nextSteps(ci, command === "add" ? name : "production");
+    nextSteps(
+      ci,
+      command === Command.ADD ? name : ReservedEnvironment.PRODUCTION,
+    );
     outro(pc.green("Done."));
   } catch (error) {
     fail((error as Error).message);

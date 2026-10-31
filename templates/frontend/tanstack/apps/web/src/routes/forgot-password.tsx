@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ButtonSize, ButtonVariant } from "@/components/ui/button.values";
 import { Input } from "@/components/ui/input";
 import { forgotPassword } from "../api/forgot-password";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -81,8 +82,8 @@ function ForgotPasswordPage() {
 
                 <Button
                     type="submit"
-                    variant="default"
-                    size="lg"
+                    variant={ButtonVariant.DEFAULT}
+                    size={ButtonSize.LG}
                     disabled={loading || !email}
                 >
                     {loading ? "Sending..." : "Send reset link"}

@@ -22,7 +22,7 @@ import {
   text,
 } from "@clack/prompts";
 import pc from "picocolors";
-import { ADD_FEATURES, runAdd, type AddFeature } from "./add.js";
+import { ADD_FEATURES, runAdd } from "./add.js";
 import {
   buildReplacements,
   compose,
@@ -40,18 +40,21 @@ import {
 } from "./generate.js";
 import { findTemplatesDir, getCliVersion } from "./templates.js";
 import {
-  type Ci,
-  type Database,
-  type Design,
-  type Frontend,
+  ReleaseBranch,
+  Command,
+  AddFeature,
+  Ci,
+  Database,
+  Design,
+  Frontend,
   type Selections,
 } from "./types.js";
 
 const DEFAULT_NAME = "my-pimasi-app";
-const FRONTENDS = ["tanstack", "nextjs"] as const;
-const DATABASES = ["mongo", "postgres"] as const;
-const DESIGNS = ["shadcn", "bespoke"] as const;
-const CI_HOSTS = ["github", "gitlab", "none"] as const;
+const FRONTENDS = Object.values(Frontend);
+const DATABASES = Object.values(Database);
+const DESIGNS = Object.values(Design);
+const CI_HOSTS = Object.values(Ci);
 const KEBAB_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function validateName(value: string | undefined): string | undefined {
@@ -169,7 +172,7 @@ function isAddFeature(value: string): value is AddFeature {
 
 function tryGitInit(targetDir: string): void {
   try {
-    execFileSync("git", ["init", "-b", "main"], {
+    execFileSync("git", ["init", "-b", ReleaseBranch.MAIN], {
       cwd: targetDir,
       stdio: "ignore",
     });
@@ -201,7 +204,7 @@ function displayPath(targetDir: string): string {
 }
 
 async function main(): Promise<void> {
-  if (process.argv[2] === "env") {
+  if (process.argv[2] === Command.ENV) {
     await runEnv(process.argv.slice(3), process.cwd());
     return;
   }
@@ -261,7 +264,7 @@ async function main(): Promise<void> {
       : undefined;
 
   const wantsAdd =
-    positionals[0] === "add" ||
+    positionals[0] === Command.ADD ||
     (positionals.length === 0 &&
       values.name === undefined &&
       values.dir === undefined &&
@@ -277,13 +280,13 @@ async function main(): Promise<void> {
       "dir",
       "cordova",
       "no-cordova",
-      "workers",
+      AddFeature.WORKERS,
       "no-workers",
-      "cache",
+      AddFeature.CACHE,
       "no-cache",
-      "rate-limit",
+      AddFeature.RATE_LIMIT,
       "no-rate-limit",
-      "websockets",
+      AddFeature.WEBSOCKETS,
       "no-websockets",
       "no-git",
     ].filter((key) => (values as Record<string, unknown>)[key] !== undefined);
@@ -294,7 +297,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    const rawAxes = positionals[0] === "add" ? positionals.slice(1) : [];
+    const rawAxes = positionals[0] === Command.ADD ? positionals.slice(1) : [];
     const axes: AddFeature[] = [];
     for (const raw of rawAxes) {
       if (!isAddFeature(raw)) {
@@ -348,23 +351,23 @@ async function main(): Promise<void> {
   const frontend = await resolveOption<Frontend>(
     values.frontend as Frontend | undefined,
     isYes,
-    "tanstack",
+    Frontend.TANSTACK,
     async () => {
       const answer = await select({
         message: "Frontend framework?",
         options: [
           {
-            value: "tanstack",
+            value: Frontend.TANSTACK,
             label: "TanStack Router SPA",
             hint: "React 19 + Vite",
           },
           {
-            value: "nextjs",
+            value: Frontend.NEXTJS,
             label: "Next.js",
             hint: "App Router — API client",
           },
         ],
-        initialValue: "tanstack",
+        initialValue: Frontend.TANSTACK,
       });
       ensureNotCancelled(answer);
       return answer as Frontend;
@@ -396,19 +399,19 @@ async function main(): Promise<void> {
   const database = await resolveOption<Database>(
     values.db as Database | undefined,
     isYes,
-    "mongo",
+    Database.MONGO,
     async () => {
       const answer = await select({
         message: "Database?",
         options: [
-          { value: "mongo", label: "MongoDB", hint: "MongoDB driver" },
+          { value: Database.MONGO, label: "MongoDB", hint: "MongoDB driver" },
           {
-            value: "postgres",
+            value: Database.POSTGRES,
             label: "PostgreSQL",
             hint: "uses Kysely",
           },
         ],
-        initialValue: "mongo",
+        initialValue: Database.MONGO,
       });
       ensureNotCancelled(answer);
       return answer as Database;
@@ -499,23 +502,23 @@ async function main(): Promise<void> {
   const design = await resolveOption<Design>(
     values.design as Design | undefined,
     isYes,
-    "shadcn",
+    Design.SHADCN,
     async () => {
       const answer = await select({
         message: "Design system?",
         options: [
           {
-            value: "shadcn",
+            value: Design.SHADCN,
             label: "shadcn/ui",
             hint: "standard tokens, light+dark, components.json",
           },
           {
-            value: "bespoke",
+            value: Design.BESPOKE,
             label: "Bespoke tokens",
             hint: "in-house dark palette, zero extra deps",
           },
         ],
-        initialValue: "shadcn",
+        initialValue: Design.SHADCN,
       });
       ensureNotCancelled(answer);
       return answer as Design;
@@ -528,29 +531,29 @@ async function main(): Promise<void> {
   const ci = await resolveOption<Ci>(
     values.ci as Ci | undefined,
     isYes,
-    "none",
+    Ci.NONE,
     async () => {
       const answer = await select({
         message: "CI and releases",
         options: [
-          { value: "github", label: "GitHub" },
-          { value: "gitlab", label: "GitLab" },
-          { value: "none", label: "None" },
+          { value: Ci.GITHUB, label: "GitHub" },
+          { value: Ci.GITLAB, label: "GitLab" },
+          { value: Ci.NONE, label: "None" },
         ],
-        initialValue: "none",
+        initialValue: Ci.NONE,
       });
       ensureNotCancelled(answer);
       return answer as Ci;
     },
   );
 
-  if (ci === "none" && maintainersOnlyFlag !== undefined) {
+  if (ci === Ci.NONE && maintainersOnlyFlag !== undefined) {
     fail(
       "--maintainers-only and --no-maintainers-only need --ci github or --ci gitlab.",
     );
   }
   const maintainersOnly =
-    ci === "none"
+    ci === Ci.NONE
       ? false
       : await resolveOption<boolean>(
           maintainersOnlyFlag,
@@ -614,7 +617,7 @@ async function main(): Promise<void> {
   s.start("Composing project");
   mkdirSync(targetDir, { recursive: true });
   compose(templatesDir, targetDir, selections);
-  if (ci !== "none") {
+  if (ci !== Ci.NONE) {
     const releaseConfig = join(targetDir, RELEASE_CONFIG);
     writeFileSync(
       releaseConfig,
@@ -634,11 +637,11 @@ async function main(): Promise<void> {
   writeManifest(targetDir, selections, cliVersion);
   const stackParts: string[] = [frontend, database, design];
   if (cordova) stackParts.push("cordova");
-  if (workers) stackParts.push("workers");
-  if (cache) stackParts.push("cache");
-  if (rateLimit) stackParts.push("rate-limit");
-  if (websockets) stackParts.push("websockets");
-  if (ci !== "none") stackParts.push(ci);
+  if (workers) stackParts.push(AddFeature.WORKERS);
+  if (cache) stackParts.push(AddFeature.CACHE);
+  if (rateLimit) stackParts.push(AddFeature.RATE_LIMIT);
+  if (websockets) stackParts.push(AddFeature.WEBSOCKETS);
+  if (ci !== Ci.NONE) stackParts.push(ci);
   s.stop(`Composed ${pc.bold(slug)} (${stackParts.join(" + ")})`);
   log.info(
     `Packages: ${pc.bold(`@${slug}/lib`)}, ${pc.bold(`${slug}-server`)}, ${pc.bold(`${slug}-web`)}`,

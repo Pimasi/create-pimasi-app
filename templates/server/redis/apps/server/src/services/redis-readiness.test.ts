@@ -1,3 +1,7 @@
+import {
+    ReadinessStatus,
+    ReadinessCheckStatus,
+} from "@pimasi/lib/values/health";
 import { createServer } from "node:http";
 import express from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,8 +23,8 @@ describe("Redis readiness", () => {
         });
 
         expect(await runReadinessChecks()).toEqual({
-            status: "ready",
-            checks: { redis: "ok" },
+            status: ReadinessStatus.READY,
+            checks: { redis: ReadinessCheckStatus.OK },
         });
         expect(ping).toHaveBeenCalledOnce();
     });
@@ -37,8 +41,8 @@ describe("Redis readiness", () => {
         });
 
         expect(await runReadinessChecks()).toEqual({
-            status: "unavailable",
-            checks: { redis: "failed" },
+            status: ReadinessStatus.UNAVAILABLE,
+            checks: { redis: ReadinessCheckStatus.FAILED },
         });
         expect(ping).toHaveBeenCalledOnce();
     });
@@ -48,8 +52,11 @@ describe("Redis readiness", () => {
 
         expect(res.status).toBe(200);
         expect(res.data).toEqual({
-            status: "ready",
-            checks: { database: "ok", redis: "ok" },
+            status: ReadinessStatus.READY,
+            checks: {
+                database: ReadinessCheckStatus.OK,
+                redis: ReadinessCheckStatus.OK,
+            },
         });
     });
 });

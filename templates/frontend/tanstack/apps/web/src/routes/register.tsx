@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ButtonSize, ButtonVariant } from "@/components/ui/button.values";
 import { Input } from "@/components/ui/input";
 import { register } from "../api/register-user";
 import { useDocumentTitle } from "@/hooks/use-document-title";
@@ -81,8 +82,8 @@ function RegisterPage() {
 
                 <Button
                     type="submit"
-                    variant="default"
-                    size="lg"
+                    variant={ButtonVariant.DEFAULT}
+                    size={ButtonSize.LG}
                     disabled={loading}
                 >
                     {loading ? "Creating account..." : "Register"}
@@ -96,8 +97,8 @@ function RegisterPage() {
             </div>
 
             <Button
-                variant="outline"
-                size="lg"
+                variant={ButtonVariant.OUTLINE}
+                size={ButtonSize.LG}
                 onClick={handleGoogleLogin}
                 disabled={loading}
                 className="w-full max-w-sm"

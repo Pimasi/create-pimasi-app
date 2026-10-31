@@ -1,3 +1,5 @@
+import { RateLimitKey } from "../../middleware/rate-limit-key";
+import { RouteMethod } from "../../app/route-values";
 import { Route } from "../../app/route";
 import { Schema } from "@pimasi/utils/lib/json-schema";
 import { Forbidden, Unauthorized } from "@pimasi/utils/lib/error";
@@ -16,7 +18,7 @@ import { ErrorResponseSchema } from "@pimasi/lib/schemas/api/error.schema";
 import { RATE_LIMIT } from "../../middleware/rate-limit";
 
 export const ConfirmPasswordResetRoute = Route({
-    method: "post",
+    method: RouteMethod.POST,
     route: "/auth/confirm-password-reset",
     docs: {
         tags: ["Auth"],
@@ -41,7 +43,7 @@ export const ConfirmPasswordResetRoute = Route({
     handler: [
         RATE_LIMIT({
             bucket: "confirm-pw",
-            key: "ip",
+            key: RateLimitKey.IP,
             max: 10,
             windowSeconds: 60,
         }),

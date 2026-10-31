@@ -1,3 +1,8 @@
+import {
+    PingMessage,
+    ReadinessStatus,
+    ReadinessCheckStatus,
+} from "@pimasi/lib/values/health";
 import { afterAll, beforeAll, describe, it, expect } from "vitest";
 import { createServer, type Server } from "node:http";
 import { once } from "node:events";
@@ -35,16 +40,18 @@ describe("GET /ready", () => {
         let res = await $test.get("/ready");
 
         expect(res.status).toBe(200);
-        expect(res.data.status).toBe("ready");
-        expect(res.data.checks.database).toBe("ok");
-        expect(Object.values(res.data.checks)).not.toContain("failed");
+        expect(res.data.status).toBe(ReadinessStatus.READY);
+        expect(res.data.checks.database).toBe(ReadinessCheckStatus.OK);
+        expect(Object.values(res.data.checks)).not.toContain(
+            ReadinessCheckStatus.FAILED,
+        );
     });
 
     it("returns 200 when no checks are registered", async () => {
         let res = await http({ url: `${baseUrl}/ready` });
 
         expect(res.status).toBe(200);
-        expect(res.data).toEqual({ status: "ready", checks: {} });
+        expect(res.data).toEqual({ status: ReadinessStatus.READY, checks: {} });
     });
 
     it("returns 503 for a failing database check without affecting liveness", async () => {
@@ -64,11 +71,14 @@ describe("GET /ready", () => {
 
             expect(ready.status).toBe(503);
             expect(ready.data).toEqual({
-                status: "unavailable",
-                checks: { database: "failed", independent: "ok" },
+                status: ReadinessStatus.UNAVAILABLE,
+                checks: {
+                    database: ReadinessCheckStatus.FAILED,
+                    independent: ReadinessCheckStatus.OK,
+                },
             });
             expect(ping.status).toBe(200);
-            expect(ping.data.message).toBe("pong");
+            expect(ping.data.message).toBe(PingMessage.PONG);
         } finally {
             remove();
             removePassing();

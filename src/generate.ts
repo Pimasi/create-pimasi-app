@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type {
+import {
+  Ci,
   Database,
   Design,
   Frontend,
-  Manifest,
-  Selections,
+  type Manifest,
+  type Selections,
 } from "./types.js";
 
 export const MANIFEST_FILENAME = "pimasi.json";
@@ -46,7 +47,7 @@ export function manifestToSelections(manifest: Manifest): Selections {
     frontend: manifest.frontend,
     database: manifest.database,
     design: manifest.design,
-    ci: manifest.ci ?? "none",
+    ci: manifest.ci ?? Ci.NONE,
     cordova: manifest.cordova,
     workers: manifest.workers,
     cache: manifest.cache,
@@ -60,17 +61,17 @@ function toDbName(slug: string): string {
 }
 
 function frontendLabel(frontend: Frontend): string {
-  return frontend === "tanstack"
+  return frontend === Frontend.TANSTACK
     ? "TanStack Router SPA (React 19 + Vite)"
     : "Next.js 15 App Router";
 }
 
 function databaseLabel(database: Database): string {
-  return database === "mongo" ? "MongoDB" : "PostgreSQL (Kysely)";
+  return database === Database.MONGO ? "MongoDB" : "PostgreSQL (Kysely)";
 }
 
 function designLabel(design: Design): string {
-  return design === "shadcn" ? "shadcn/ui" : "bespoke tokens";
+  return design === Design.SHADCN ? "shadcn/ui" : "bespoke tokens";
 }
 
 function needsRedis(selections: Selections): boolean {
@@ -88,7 +89,7 @@ export function renderDockerCompose(selections: Selections): string {
   const withRedis = needsRedis(selections);
 
   const serverDbEnv =
-    database === "mongo"
+    database === Database.MONGO
       ? [
           `    MONGO_URL: mongodb://root:secret@${slug}-mongo:27017/?replicaSet=rs0&authSource=admin`,
           `    MONGO_DATABASE: ${dbName}`,
@@ -110,9 +111,10 @@ export function renderDockerCompose(selections: Selections): string {
     `    SENDGRID_FROM_EMAIL: \${SENDGRID_FROM_EMAIL}`,
   ].join("\n");
 
-  const webAnchorRef = frontend === "tanstack" ? "vite-config" : "web-config";
+  const webAnchorRef =
+    frontend === Frontend.TANSTACK ? "vite-config" : "web-config";
   const webAnchor =
-    frontend === "tanstack"
+    frontend === Frontend.TANSTACK
       ? [
           `x-vite-config: &vite-config`,
           `    VITE_FIREBASE_API_KEY: \${FIREBASE_API_KEY}`,
@@ -127,12 +129,12 @@ export function renderDockerCompose(selections: Selections): string {
         ].join("\n");
 
   const dbServiceName =
-    database === "mongo" ? `${slug}-mongo` : `${slug}-postgres`;
+    database === Database.MONGO ? `${slug}-mongo` : `${slug}-postgres`;
 
   const postgresHealthcheck = `            test: ["CMD-SHELL", "pg_isready -U postgres -d ${dbName}"]`;
 
   const dbService =
-    database === "mongo"
+    database === Database.MONGO
       ? [
           `    ${slug}-mongo:`,
           `        build:`,
@@ -239,7 +241,7 @@ export function renderDockerCompose(selections: Selections): string {
   ].join("\n");
 
   const webVolumesLines =
-    frontend === "tanstack"
+    frontend === Frontend.TANSTACK
       ? [
           `        volumes:`,
           `            - ./apps/web/__generated__:/app/apps/web/__generated__`,
@@ -247,7 +249,7 @@ export function renderDockerCompose(selections: Selections): string {
       : [];
 
   const webIgnoreLines =
-    frontend === "tanstack"
+    frontend === Frontend.TANSTACK
       ? [`                      - __generated__/`]
       : [
           `                      - .next/`,
@@ -294,7 +296,7 @@ export function renderDockerCompose(selections: Selections): string {
     webService,
   ];
 
-  if (database === "postgres") {
+  if (database === Database.POSTGRES) {
     blocks.push([`volumes:`, `    ${slug}-postgres-data:`].join("\n"));
   }
 
@@ -306,7 +308,7 @@ export function renderEnvExample(selections: Selections): string {
   const dbName = toDbName(slug);
 
   const dbBlock =
-    database === "mongo"
+    database === Database.MONGO
       ? [
           `# Mongo is provisioned by docker-compose; MONGO_URL / MONGO_DATABASE are wired`,
           `# there (mongodb://root:<MONGO_PASSWORD>@${slug}-mongo:27017, database ${dbName}).`,
@@ -384,9 +386,9 @@ export function renderStackBlock(selections: Selections): string {
     `- **Rate limiting**: ${rateLimit ? "Redis-backed (auth routes)" : "not enabled"}`,
     `- **WebSockets**: ${websockets ? "realtime push over the Redis-backed $bus" : "not enabled"}`,
     `- **Mobile**: ${cordova ? "Cordova (Android/iOS)" : "not enabled"}`,
-    ...(ci === "none"
+    ...(ci === Ci.NONE
       ? []
-      : [`- **CI and releases**: ${ci === "github" ? "GitHub" : "GitLab"}`]),
+      : [`- **CI and releases**: ${ci === Ci.GITHUB ? "GitHub" : "GitLab"}`]),
     ``,
   ].join("\n");
 }

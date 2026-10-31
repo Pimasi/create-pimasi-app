@@ -1,3 +1,7 @@
+import {
+    ReadinessStatus,
+    ReadinessCheckStatus,
+} from "@pimasi/lib/values/health";
 import { createServer } from "node:http";
 import express from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,8 +22,8 @@ describe("PostgreSQL readiness", () => {
         });
 
         expect(await runReadinessChecks()).toEqual({
-            status: "ready",
-            checks: { database: "ok" },
+            status: ReadinessStatus.READY,
+            checks: { database: ReadinessCheckStatus.OK },
         });
         expect(query).toHaveBeenCalledWith(
             expect.objectContaining({ sql: "select 1" }),
@@ -39,8 +43,8 @@ describe("PostgreSQL readiness", () => {
         });
 
         expect(await runReadinessChecks()).toEqual({
-            status: "unavailable",
-            checks: { database: "failed" },
+            status: ReadinessStatus.UNAVAILABLE,
+            checks: { database: ReadinessCheckStatus.FAILED },
         });
         expect(query).toHaveBeenCalledWith(
             expect.objectContaining({ sql: "select 1" }),

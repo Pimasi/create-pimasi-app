@@ -1,3 +1,4 @@
+import { TokenType } from "../../utils/token-type";
 import { createHash } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { $env } from "../../utils/env";
@@ -14,7 +15,7 @@ export async function issuePasswordResetToken(userId: string): Promise<string> {
     let user = await $users.findById(userId);
 
     let payload = {
-        type: "password_reset",
+        type: TokenType.PASSWORD_RESET,
         user_id: userId,
         pwd: passwordFingerprint(user?.password_hash),
     };
@@ -32,7 +33,7 @@ export async function consumePasswordResetToken(
         return null;
     }
 
-    if (decoded?.type !== "password_reset") return null;
+    if (decoded?.type !== TokenType.PASSWORD_RESET) return null;
     if (typeof decoded.user_id !== "string") return null;
 
     let user = await $users.findById(decoded.user_id);

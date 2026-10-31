@@ -1,34 +1,37 @@
 import { cn } from "@/lib/utils";
+import { ButtonSize, ButtonVariant } from "./button.values";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-    variant?:
-        "default" | "secondary" | "outline" | "ghost" | "destructive" | "link";
-    size?: "default" | "sm" | "lg" | "icon";
+    variant?: ButtonVariant;
+    size?: ButtonSize;
 }
 
 export function Button({
-    variant = "default",
-    size = "default",
+    variant = ButtonVariant.DEFAULT,
+    size = ButtonSize.DEFAULT,
     className,
     children,
     ...props
 }: ButtonProps) {
     let variantClasses = {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary:
+        [ButtonVariant.DEFAULT]:
+            "bg-primary text-primary-foreground hover:bg-primary/90",
+        [ButtonVariant.SECONDARY]:
             "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        outline:
+        [ButtonVariant.OUTLINE]:
             "border border-border bg-transparent text-foreground hover:bg-accent hover:text-accent-foreground",
-        ghost: "text-foreground hover:bg-accent hover:text-accent-foreground",
-        destructive: "bg-destructive text-white hover:bg-destructive/90",
-        link: "text-primary underline-offset-4 hover:underline",
+        [ButtonVariant.GHOST]:
+            "text-foreground hover:bg-accent hover:text-accent-foreground",
+        [ButtonVariant.DESTRUCTIVE]:
+            "bg-destructive text-white hover:bg-destructive/90",
+        [ButtonVariant.LINK]: "text-primary underline-offset-4 hover:underline",
     };
 
     let sizeClasses = {
-        default: "px-4 py-2 text-base",
-        sm: "px-3 py-1.5 text-sm",
-        lg: "px-6 py-3 text-lg",
-        icon: "size-10",
+        [ButtonSize.DEFAULT]: "px-4 py-2 text-base",
+        [ButtonSize.SM]: "px-3 py-1.5 text-sm",
+        [ButtonSize.LG]: "px-6 py-3 text-lg",
+        [ButtonSize.ICON]: "size-10",
     };
 
     return (

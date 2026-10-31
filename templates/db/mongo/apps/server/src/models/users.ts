@@ -1,4 +1,4 @@
-import { UserRoles } from "@pimasi/lib/values/auth";
+import { UserRole } from "@pimasi/lib/values/auth";
 import { $mongo } from "../services/db";
 
 export interface UserModel {
@@ -31,7 +31,7 @@ export interface UserModel {
      * accounts. Null/undefined for active accounts.
      */
     disabled_at?: Date | null;
-    roles: UserRoles[];
+    roles: UserRole[];
 }
 
 export interface UsersRepo {

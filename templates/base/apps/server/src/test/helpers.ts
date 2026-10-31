@@ -1,3 +1,4 @@
+import { TokenType } from "../utils/token-type";
 import jwt from "jsonwebtoken";
 import type { UserModel } from "../models/users";
 import { getenv } from "@pimasi/utils/lib/helpers";
@@ -5,9 +6,13 @@ import { http } from "@pimasi/utils/lib/http";
 import { seedUser, teardownSeed, cleanup, db } from "./db-helpers";
 
 function signUserToken(userId: string): string {
-    return jwt.sign({ type: "user", user_id: userId }, getenv("JWT_SECRET"), {
-        expiresIn: "1h",
-    });
+    return jwt.sign(
+        { type: TokenType.USER, user_id: userId },
+        getenv("JWT_SECRET"),
+        {
+            expiresIn: "1h",
+        },
+    );
 }
 
 async function seed(): Promise<{ user: UserModel; token: string }> {

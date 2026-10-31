@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
+import { ButtonSize, ButtonVariant } from "@/components/ui/button.values";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useAuth } from "../hooks/use-auth";
 
@@ -29,7 +30,10 @@ function HomePage() {
                 </p>
                 {!user && (
                     <Link to="/login">
-                        <Button variant="default" size="lg">
+                        <Button
+                            variant={ButtonVariant.DEFAULT}
+                            size={ButtonSize.LG}
+                        >
                             Log in
                         </Button>
                     </Link>

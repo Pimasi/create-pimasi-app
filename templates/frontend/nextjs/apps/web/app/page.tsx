@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { ButtonSize, ButtonVariant } from "@/components/ui/button.values";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function HomePage() {
@@ -25,7 +26,10 @@ export default function HomePage() {
                 </p>
                 {!user && (
                     <Link href="/login">
-                        <Button variant="default" size="lg">
+                        <Button
+                            variant={ButtonVariant.DEFAULT}
+                            size={ButtonSize.LG}
+                        >
                             Log in
                         </Button>
                     </Link>

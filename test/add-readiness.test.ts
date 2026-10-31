@@ -11,15 +11,34 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
+import { Command, AddFeature, Ci, Database, Frontend } from "../src/types.js";
+
+enum PingMessage {
+  PONG = "pong",
+}
+
+enum ReadinessStatus {
+  UNAVAILABLE = "unavailable",
+}
+
+enum ReadinessCheckStatus {
+  FAILED = "failed",
+  OK = "ok",
+}
 
 const CLI = fileURLToPath(new URL("../dist/index.js", import.meta.url));
+
 const LEGACY_PING = fileURLToPath(
   new URL(
     "../templates/legacy/0.2.0/base/apps/server/src/handlers/ping.route.ts",
     import.meta.url,
   ),
 );
+
 const READINESS_FILES = [
+  "apps/shared/lib/src/values/wire.ts",
+  "apps/shared/lib/src/values/health.ts",
+  "apps/server/src/app/route-values.ts",
   "apps/server/src/app/readiness.ts",
   "apps/server/src/app/readiness.test.ts",
   "apps/server/src/handlers/ready.route.ts",
@@ -51,7 +70,7 @@ function fixture(t: TestContext, database: string, args: string[] = []) {
     "--db",
     database,
     "--ci",
-    "none",
+    Ci.NONE,
     "--no-install",
     "--dir",
     dir,
@@ -61,9 +80,30 @@ function fixture(t: TestContext, database: string, args: string[] = []) {
   return dir;
 }
 
-for (let axis of ["cache", "workers", "rate-limit", "websockets"]) {
+function publishedReadiness(dir: string, path: string, database: string) {
+  let fragment = path.includes("/database-readiness.")
+    ? `db/${database}`
+    : path.includes("/redis-readiness.")
+      ? "server/redis"
+      : "base";
+  let snapshot = fileURLToPath(
+    new URL(`../templates/legacy/0.3.0/${fragment}/${path}`, import.meta.url),
+  );
+  return (
+    existsSync(snapshot)
+      ? readFileSync(snapshot, "utf8")
+      : readFileSync(join(dir, path), "utf8")
+  ).replaceAll("@pimasi/lib", "@g1-readiness/lib");
+}
+
+for (let axis of [
+  AddFeature.CACHE,
+  AddFeature.WORKERS,
+  AddFeature.RATE_LIMIT,
+  AddFeature.WEBSOCKETS,
+]) {
   test(`${axis}: first Redis feature brings missing readiness prerequisites`, async (t) => {
-    let dir = fixture(t, "mongo", ["--no-cache", "--no-rate-limit"]);
+    let dir = fixture(t, Database.MONGO, ["--no-cache", "--no-rate-limit"]);
     let pingPath = join(dir, "apps/server/src/handlers/ping.route.ts");
     let legacyPing = readFileSync(LEGACY_PING, "utf8").replaceAll(
       "@pimasi/lib",
@@ -76,7 +116,7 @@ for (let axis of ["cache", "workers", "rate-limit", "websockets"]) {
     record(dir);
     let result = command(dir, process.execPath, [
       CLI,
-      "add",
+      Command.ADD,
       axis,
       "--yes",
       "--no-install",
@@ -105,12 +145,15 @@ async function assertLegacyLiveness(source: string) {
   let http = async ({ url }: { url: string }) => {
     requests.push(url.endsWith("/ping") ? "/ping" : "/ready");
     return url.endsWith("/ping")
-      ? { status: 200, data: { message: "pong" } }
+      ? { status: 200, data: { message: PingMessage.PONG } }
       : {
           status: 503,
           data: {
-            status: "unavailable",
-            checks: { database: "failed", independent: "ok" },
+            status: ReadinessStatus.UNAVAILABLE,
+            checks: {
+              database: ReadinessCheckStatus.FAILED,
+              independent: ReadinessCheckStatus.OK,
+            },
           },
         };
   };
@@ -126,18 +169,29 @@ async function assertLegacyLiveness(source: string) {
     "registerReadinessCheck",
     "expect",
     "baseUrl",
+    "PingMessage",
+    "ReadinessStatus",
+    "ReadinessCheckStatus",
     `return (async () => {${liveness[1]}})();`,
-  )(http, () => () => {}, expect, "http://legacy.invalid");
+  )(
+    http,
+    () => () => {},
+    expect,
+    "http://legacy.invalid",
+    PingMessage,
+    ReadinessStatus,
+    ReadinessCheckStatus,
+  );
   assert.deepEqual(requests, ["/ready", "/ping"]);
 }
 
 for (let satisfied of [true, false]) {
   test(`first Redis feature preserves edited readiness prerequisites: satisfied=${satisfied}`, (t) => {
-    let dir = fixture(t, "postgres", ["--no-cache", "--no-rate-limit"]);
+    let dir = fixture(t, Database.POSTGRES, ["--no-cache", "--no-rate-limit"]);
     let originals = new Map<string, string>();
     for (let path of READINESS_FILES.slice(0, -2)) {
       let content =
-        (satisfied ? readFileSync(join(dir, path), "utf8") : "") +
+        (satisfied ? publishedReadiness(dir, path, Database.POSTGRES) : "") +
         '\nexport const PROJECT_READINESS_LABEL = "custom";\n';
       writeFileSync(join(dir, path), content);
       originals.set(path, content);
@@ -145,8 +199,8 @@ for (let satisfied of [true, false]) {
     record(dir);
     let result = command(dir, process.execPath, [
       CLI,
-      "add",
-      "cache",
+      Command.ADD,
+      AddFeature.CACHE,
       "--yes",
       "--no-install",
     ]);
@@ -168,8 +222,8 @@ for (let satisfied of [true, false]) {
 }
 
 for (let [database, frontend] of [
-  ["mongo", "nextjs"],
-  ["postgres", "tanstack"],
+  [Database.MONGO, Frontend.NEXTJS],
+  [Database.POSTGRES, Frontend.TANSTACK],
 ]) {
   test(`${database}: every satisfied edited release prerequisite has a content rule`, (t) => {
     let dir = fixture(t, database, ["--frontend", frontend]);
@@ -179,13 +233,14 @@ for (let [database, frontend] of [
       "Dockerfile.server",
       "Dockerfile.web",
       "apps/server/process.config.js",
+      "apps/server/src/cli.ts",
       "apps/server/src/app/process-config.test.ts",
       "apps/server/src/handlers/ping.route.ts",
       "apps/server/src/handlers/ping.test.ts",
       "apps/shared/lib/src/schemas/api/ping-response.schema.ts",
       "apps/server/src/utils/env.ts",
       ...READINESS_FILES,
-      ...(frontend === "nextjs" ? ["apps/web/tsconfig.json"] : []),
+      ...(frontend === Frontend.NEXTJS ? ["apps/web/tsconfig.json"] : []),
     ];
     let originals = new Map<string, string>();
     for (let path of paths) {
@@ -209,8 +264,8 @@ for (let [database, frontend] of [
     record(dir);
     let result = command(dir, process.execPath, [
       CLI,
-      "add",
-      "ci-github",
+      Command.ADD,
+      AddFeature.CI_GITHUB,
       "--yes",
       "--no-install",
     ]);
@@ -226,16 +281,43 @@ for (let [database, frontend] of [
   });
 }
 
+test("CI preserves an edited CLI when installing process-count tests", (t) => {
+  let dir = fixture(t, Database.MONGO);
+  let path = "apps/server/src/cli.ts";
+  let content = 'export const PROJECT_CLI_LABEL = "custom";\n';
+  writeFileSync(join(dir, path), content);
+  let testPath = "apps/server/src/app/process-config.test.ts";
+  let testContent = readFileSync(join(dir, testPath), "utf8");
+  rmSync(join(dir, testPath));
+  record(dir);
+  let result = command(dir, process.execPath, [
+    CLI,
+    Command.ADD,
+    AddFeature.CI_GITHUB,
+    "--yes",
+    "--no-install",
+  ]);
+  assert.equal(result.status, 0, result.output);
+  assert.equal(readFileSync(join(dir, testPath), "utf8"), testContent);
+  assert.equal(readFileSync(join(dir, path), "utf8"), content);
+  assert.equal(existsSync(join(dir, path + ".new")), false);
+  assert.doesNotMatch(testContent, /CliErrorCode/);
+  assert.doesNotMatch(
+    result.output,
+    /Merge before your first gate run or release/,
+  );
+});
+
 test("CI reports an edited process-count test missing its contract", (t) => {
-  let dir = fixture(t, "mongo");
+  let dir = fixture(t, Database.MONGO);
   let path = "apps/server/src/app/process-config.test.ts";
   let content = 'export const PROJECT_RELEASE_LABEL = "custom";\n';
   writeFileSync(join(dir, path), content);
   record(dir);
   let result = command(dir, process.execPath, [
     CLI,
-    "add",
-    "ci-github",
+    Command.ADD,
+    AddFeature.CI_GITHUB,
     "--yes",
     "--no-install",
   ]);
@@ -247,7 +329,7 @@ test("CI reports an edited process-count test missing its contract", (t) => {
 
 function record(dir: string) {
   for (let args of [
-    ["add", "."],
+    [Command.ADD, "."],
     [
       "-c",
       "user.name=l1",
@@ -266,15 +348,15 @@ function record(dir: string) {
 }
 
 for (let [database, host] of [
-  ["mongo", "github"],
-  ["postgres", "gitlab"],
+  [Database.MONGO, Ci.GITHUB],
+  [Database.POSTGRES, Ci.GITLAB],
 ]) {
   test(`${database}: adding CI preserves satisfied edited readiness prerequisites`, (t) => {
     let dir = fixture(t, database);
     let originals = new Map<string, string>();
     for (let path of READINESS_FILES) {
       let content =
-        readFileSync(join(dir, path), "utf8") +
+        publishedReadiness(dir, path, database) +
         '\nexport const PROJECT_READINESS_LABEL = "custom";\n';
       writeFileSync(join(dir, path), content);
       originals.set(path, content);
@@ -282,7 +364,7 @@ for (let [database, host] of [
     record(dir);
     let result = command(dir, process.execPath, [
       CLI,
-      "add",
+      Command.ADD,
       `ci-${host}`,
       "--yes",
       "--no-install",
@@ -310,7 +392,7 @@ for (let [database, host] of [
     record(dir);
     let result = command(dir, process.execPath, [
       CLI,
-      "add",
+      Command.ADD,
       `ci-${host}`,
       "--yes",
       "--no-install",
@@ -328,3 +410,70 @@ for (let [database, host] of [
     assert.match(result.output, /Merge before your first gate run or release/);
   });
 }
+
+for (let feature of Object.values(AddFeature)) {
+  for (let withRedis of [false, true]) {
+    if (
+      withRedis &&
+      (feature === AddFeature.WORKERS || feature === AddFeature.CACHE)
+    )
+      continue;
+    test(`${feature}: adding supplies the enum modules its imports require with Redis=${withRedis}`, (t) => {
+      let dir = fixture(t, Database.MONGO, [
+        ...(withRedis ? [] : ["--no-cache"]),
+        "--no-rate-limit",
+      ]);
+      let required = [
+        "apps/shared/lib/src/values/wire.ts",
+        ...(!withRedis ||
+        feature === AddFeature.CI_GITHUB ||
+        feature === AddFeature.CI_GITLAB
+          ? [
+              "apps/shared/lib/src/values/health.ts",
+              "apps/server/src/app/route-values.ts",
+            ]
+          : []),
+        ...(feature === AddFeature.RATE_LIMIT
+          ? ["apps/server/src/middleware/rate-limit-key.ts"]
+          : []),
+        ...(feature === AddFeature.WEBSOCKETS
+          ? ["apps/server/src/utils/token-type.ts"]
+          : []),
+      ];
+      for (let path of required) rmSync(join(dir, path), { force: true });
+      record(dir);
+      let result = command(dir, process.execPath, [
+        CLI,
+        Command.ADD,
+        feature,
+        "--yes",
+        "--no-install",
+      ]);
+      assert.equal(result.status, 0, result.output);
+      for (let path of required) {
+        assert.equal(existsSync(join(dir, path)), true, path);
+        assert.equal(existsSync(join(dir, path + ".new")), false, path);
+      }
+    });
+  }
+}
+
+test("adding preserves a satisfied hand-written readiness schema with literal values", (t) => {
+  let dir = fixture(t, Database.MONGO, ["--no-cache", "--no-rate-limit"]);
+  let path = "apps/shared/lib/src/schemas/api/ready-response.schema.ts";
+  let content =
+    publishedReadiness(dir, path, Database.MONGO) +
+    '\nexport const PROJECT_READINESS_LABEL = "custom";\n';
+  writeFileSync(join(dir, path), content);
+  record(dir);
+  let result = command(dir, process.execPath, [
+    CLI,
+    Command.ADD,
+    AddFeature.CACHE,
+    "--yes",
+    "--no-install",
+  ]);
+  assert.equal(result.status, 0, result.output);
+  assert.equal(readFileSync(join(dir, path), "utf8"), content);
+  assert.equal(existsSync(join(dir, path + ".new")), false);
+});

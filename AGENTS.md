@@ -10,6 +10,18 @@ This repository is public. Never write a person's name, quotes of what someone
 said, or a record of who decided what and when. State settled rules as behaviour
 in the document that owns them.
 
+## String enums
+
+The CLI's TypeScript in `src/` and `test/`, and every template fragment, follow
+[String enums](templates/base/CONTRIBUTING.md#string-enums): a closed set of
+string values is a string `enum`, and code compares, assigns and passes its
+members, never raw strings. In the CLI, an enum used by several modules lives in
+`src/types.ts`; otherwise it sits beside its first use. Member values are the
+strings the CLI already reads and writes, so flags, `pimasi.json`, environment
+files and generated projects do not change. Published snapshots under
+`templates/legacy/` and the POSIX shell release tooling are exempt.
+The CLI's copy of `wireValues` lives in `src/types.ts`.
+
 ## Reviewing changes
 
 When asked to review or verify changes ("review your changes", "verify your

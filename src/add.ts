@@ -41,10 +41,55 @@ import {
   writeManifest,
 } from "./generate.js";
 import { findTemplatesDir, getCliVersion } from "./templates.js";
-import { SERVER_AXES, type Selections, type ServerAxis } from "./types.js";
+import {
+  ReleaseBranch,
+  AddFeature,
+  Ci,
+  Frontend,
+  SERVER_AXES,
+  type Selections,
+  type ServerAxis,
+} from "./types.js";
 
-export const ADD_FEATURES = [...SERVER_AXES, "ci-github", "ci-gitlab"] as const;
-export type AddFeature = (typeof ADD_FEATURES)[number];
+enum ReadinessValue {
+  READY = "ready",
+  UNAVAILABLE = "unavailable",
+  OK = "ok",
+  FAILED = "failed",
+}
+
+enum PrerequisiteFile {
+  SHARED_VALUES_WIRE_TS = "apps/shared/lib/src/values/wire.ts",
+  SHARED_VALUES_HEALTH_TS = "apps/shared/lib/src/values/health.ts",
+  SERVER_APP_ROUTE_VALUES_TS = "apps/server/src/app/route-values.ts",
+  SERVER_MIDDLEWARE_RATE_LIMIT_KEY_TS = "apps/server/src/middleware/rate-limit-key.ts",
+  SERVER_UTILS_TOKEN_TYPE_TS = "apps/server/src/utils/token-type.ts",
+  SERVER_HANDLERS_AUTH_CONFIRM_PASSWORD_RESET_ROUTE_TS = "apps/server/src/handlers/auth/confirm-password-reset.route.ts",
+  SERVER_HANDLERS_AUTH_LOGIN_WITH_FIREBASE_ROUTE_TS = "apps/server/src/handlers/auth/login-with-firebase.route.ts",
+  _GITIGNORE = "_gitignore",
+  SERVER__GITIGNORE = "apps/server/_gitignore",
+  DOCKERFILE_SERVER = "Dockerfile.server",
+  DOCKERFILE_WEB = "Dockerfile.web",
+  SERVER_PROCESS_CONFIG_JS = "apps/server/process.config.js",
+  SERVER_APP_PROCESS_CONFIG_TEST_TS = "apps/server/src/app/process-config.test.ts",
+  SERVER_UTILS_ENV_TS = "apps/server/src/utils/env.ts",
+  SERVER_MIDDLEWARE_RATE_LIMIT_TS = "apps/server/src/middleware/rate-limit.ts",
+  SERVER_HANDLERS_PING_ROUTE_TS = "apps/server/src/handlers/ping.route.ts",
+  SERVER_HANDLERS_PING_TEST_TS = "apps/server/src/handlers/ping.test.ts",
+  SHARED_SCHEMAS_API_PING_RESPONSE_SCHEMA_TS = "apps/shared/lib/src/schemas/api/ping-response.schema.ts",
+  SERVER_APP_READINESS_TS = "apps/server/src/app/readiness.ts",
+  SERVER_APP_READINESS_TEST_TS = "apps/server/src/app/readiness.test.ts",
+  SERVER_HANDLERS_READY_ROUTE_TS = "apps/server/src/handlers/ready.route.ts",
+  SERVER_HANDLERS_READY_TEST_TS = "apps/server/src/handlers/ready.test.ts",
+  SHARED_SCHEMAS_API_READY_RESPONSE_SCHEMA_TS = "apps/shared/lib/src/schemas/api/ready-response.schema.ts",
+  SERVER_SERVICES_DATABASE_READINESS_BOOT_TS = "apps/server/src/services/database-readiness.boot.ts",
+  SERVER_SERVICES_REDIS_READINESS_BOOT_TS = "apps/server/src/services/redis-readiness.boot.ts",
+  SERVER_SERVICES_DATABASE_READINESS_TEST_TS = "apps/server/src/services/database-readiness.test.ts",
+  SERVER_SERVICES_REDIS_READINESS_TEST_TS = "apps/server/src/services/redis-readiness.test.ts",
+  WEB_TSCONFIG_JSON = "apps/web/tsconfig.json",
+}
+
+export const ADD_FEATURES = Object.values(AddFeature);
 
 export interface AddOptions {
   axes: AddFeature[];
@@ -80,27 +125,27 @@ interface ApplyContext {
 
 const AXIS_KEY: Record<
   ServerAxis,
-  "workers" | "cache" | "rateLimit" | "websockets"
+  keyof Pick<Selections, "workers" | "cache" | "rateLimit" | "websockets">
 > = {
-  workers: "workers",
-  cache: "cache",
-  "rate-limit": "rateLimit",
-  websockets: "websockets",
+  [AddFeature.WORKERS]: "workers",
+  [AddFeature.CACHE]: "cache",
+  [AddFeature.RATE_LIMIT]: "rateLimit",
+  [AddFeature.WEBSOCKETS]: "websockets",
 };
 
 const AXIS_HINTS: Record<AddFeature, string> = {
-  workers: "BullMQ queues + a workers process",
-  cache: "Redis-backed $cache service",
-  "rate-limit": "Redis-backed rate limiting on the auth routes",
-  websockets: "realtime push over the Redis-backed $bus",
-  "ci-github": "GitHub Actions CI and releases",
-  "ci-gitlab": "GitLab CI and releases",
+  [AddFeature.WORKERS]: "BullMQ queues + a workers process",
+  [AddFeature.CACHE]: "Redis-backed $cache service",
+  [AddFeature.RATE_LIMIT]: "Redis-backed rate limiting on the auth routes",
+  [AddFeature.WEBSOCKETS]: "realtime push over the Redis-backed $bus",
+  [AddFeature.CI_GITHUB]: "GitHub Actions CI and releases",
+  [AddFeature.CI_GITLAB]: "GitLab CI and releases",
 };
 
 function isCiFeature(
   feature: AddFeature,
-): feature is "ci-github" | "ci-gitlab" {
-  return feature === "ci-github" || feature === "ci-gitlab";
+): feature is AddFeature.CI_GITHUB | AddFeature.CI_GITLAB {
+  return feature === AddFeature.CI_GITHUB || feature === AddFeature.CI_GITLAB;
 }
 
 function isProjectOwnedReleaseFile(relPath: string): boolean {
@@ -194,24 +239,11 @@ async function isPristine(
       relPath,
       ctx,
     );
-    const variants = [pristine];
-    if (relPath === "apps/server/src/utils/env.ts") {
-      variants.push(pristine.replace(/^.*RATE_LIMIT_ENABLED:.*\n/m, ""));
-    }
-    if (relPath === "apps/server/src/middleware/rate-limit.ts") {
-      variants.push(
-        pristine
-          .replace(/^ \* Set RATE_LIMIT_ENABLED=false.*\n/m, "")
-          .replace(" || !$env.RATE_LIMIT_ENABLED", ""),
-      );
-    }
-    for (const variant of variants) {
-      if (
-        onDisk === variant ||
-        normalised === (await formatPristine(variant, relPath, ctx))
-      ) {
-        return true;
-      }
+    if (
+      onDisk === pristine ||
+      normalised === (await formatPristine(pristine, relPath, ctx))
+    ) {
+      return true;
     }
   }
   return false;
@@ -262,21 +294,39 @@ function prerequisiteSatisfied(
     /^ARG APP_VERSION(?:=|$)/m.test(content) &&
     /^ARG GIT_SHA(?:=|$)/m.test(content);
   switch (path) {
-    case "_gitignore":
+    case PrerequisiteFile.SHARED_VALUES_WIRE_TS:
+      return /export function wireValues\s*</.test(content);
+    case PrerequisiteFile.SHARED_VALUES_HEALTH_TS:
+      return ["PingMessage", "ReadinessStatus", "ReadinessCheckStatus"].every(
+        (name) => content.includes(`export enum ${name}`),
+      );
+    case PrerequisiteFile.SERVER_APP_ROUTE_VALUES_TS:
+      return (
+        content.includes("export enum RouteMethod") &&
+        content.includes("export enum ParameterLocation")
+      );
+    case PrerequisiteFile.SERVER_MIDDLEWARE_RATE_LIMIT_KEY_TS:
+      return content.includes("export enum RateLimitKey");
+    case PrerequisiteFile.SERVER_UTILS_TOKEN_TYPE_TS:
+      return content.includes("export enum TokenType");
+    case PrerequisiteFile.SERVER_HANDLERS_AUTH_CONFIRM_PASSWORD_RESET_ROUTE_TS:
+    case PrerequisiteFile.SERVER_HANDLERS_AUTH_LOGIN_WITH_FIREBASE_ROUTE_TS:
+      return content.includes("RateLimitKey.IP");
+    case PrerequisiteFile._GITIGNORE:
       return ["node_modules/", "dist/", ".env"].every((line) => {
         return content.split(/\r?\n/).includes(line);
       });
-    case "apps/server/_gitignore":
+    case PrerequisiteFile.SERVER__GITIGNORE:
       return content.split(/\r?\n/).includes("testy.cli.*");
-    case "Dockerfile.server":
+    case PrerequisiteFile.DOCKERFILE_SERVER:
       return releaseArguments && /^CMD\s+\S/m.test(content);
-    case "Dockerfile.web":
+    case PrerequisiteFile.DOCKERFILE_WEB:
       return releaseArguments && /^WORKDIR \/app\/apps\/web\s*$/m.test(content);
-    case "apps/server/process.config.js":
+    case PrerequisiteFile.SERVER_PROCESS_CONFIG_JS:
       return /instances:\s*process\.env\.PM2_INSTANCES\s*\|\|\s*1/.test(
         content,
       );
-    case "apps/server/src/app/process-config.test.ts":
+    case PrerequisiteFile.SERVER_APP_PROCESS_CONFIG_TEST_TS:
       return (
         content.includes("PM2_INSTANCES") &&
         content.includes("./process.config.js") &&
@@ -284,93 +334,115 @@ function prerequisiteSatisfied(
           content,
         )
       );
-    case "apps/server/src/utils/env.ts":
+    case PrerequisiteFile.SERVER_UTILS_ENV_TS:
       return (
         /^\s*APP_VERSION\s*:/m.test(content) &&
         /^\s*GIT_SHA\s*:/m.test(content) &&
+        /export enum NodeEnv\s*\{/.test(content) &&
+        /export enum EnvironmentBoolean\s*\{/.test(content) &&
         (!rateLimit || /^\s*RATE_LIMIT_ENABLED\s*:/m.test(content))
       );
-    case "apps/server/src/middleware/rate-limit.ts":
-      return content.includes("!$env.RATE_LIMIT_ENABLED");
-    case "apps/server/src/handlers/ping.route.ts":
+    case PrerequisiteFile.SERVER_MIDDLEWARE_RATE_LIMIT_TS:
+      return (
+        content.includes("!$env.RATE_LIMIT_ENABLED") &&
+        /export enum RateLimitErrorCode\s*\{/.test(content)
+      );
+    case PrerequisiteFile.SERVER_HANDLERS_PING_ROUTE_TS:
       return (
         /version:\s*\$env\.APP_VERSION/.test(content) &&
         /commit:\s*\$env\.GIT_SHA/.test(content) &&
         !/console\.log\(\$env\)/.test(content)
       );
-    case "apps/server/src/handlers/ping.test.ts":
+    case PrerequisiteFile.SERVER_HANDLERS_PING_TEST_TS:
       return (
         /expect\(res\.data\.version\)/.test(content) &&
         /expect\(res\.data\.commit\)/.test(content)
       );
-    case "apps/shared/lib/src/schemas/api/ping-response.schema.ts":
+    case PrerequisiteFile.SHARED_SCHEMAS_API_PING_RESPONSE_SCHEMA_TS:
       return (
         /version:\s*Schema\.String\(\)/.test(content) &&
         /commit:\s*Schema\.String\(\)/.test(content)
       );
-    case "apps/server/src/app/readiness.ts":
+    case PrerequisiteFile.SERVER_APP_READINESS_TS:
       return (
         /export function registerReadinessCheck\s*\(/.test(content) &&
         /export async function runReadinessChecks\s*\(/.test(content) &&
         /Promise\.all\s*\(/.test(content) &&
         /Promise\.race\s*\(/.test(content) &&
         /\.then\(check\)/.test(content) &&
-        content.includes('"unavailable"')
+        (content.includes('"unavailable"') ||
+          content.includes("ReadinessStatus.UNAVAILABLE"))
       );
-    case "apps/server/src/app/readiness.test.ts":
+    case PrerequisiteFile.SERVER_APP_READINESS_TEST_TS:
       return (
         /registerReadinessCheck\s*\(/.test(content) &&
         /runReadinessChecks\s*\(/.test(content) &&
         /advanceTimersByTimeAsync\s*\(/.test(content) &&
-        content.includes('"failed"')
+        (content.includes('"failed"') ||
+          content.includes("ReadinessCheckStatus.FAILED"))
       );
-    case "apps/server/src/handlers/ready.route.ts":
+    case PrerequisiteFile.SERVER_HANDLERS_READY_ROUTE_TS:
       return (
         /route:\s*["']\/ready["']/.test(content) &&
         /await runReadinessChecks\s*\(/.test(content) &&
-        /\.status\([^)]*\?\s*200\s*:\s*503\)/.test(content)
+        /\.status\([^)]*\?\s*200\s*:\s*503,?\s*\)/.test(content)
       );
-    case "apps/server/src/handlers/ready.test.ts":
+    case PrerequisiteFile.SERVER_HANDLERS_READY_TEST_TS:
       return (
         content.includes('"/ready"') &&
         content.includes("registerReadinessCheck(") &&
         /\.status\)\.toBe\(503\)/.test(content) &&
         /\.status\)\.toBe\(200\)/.test(content)
       );
-    case "apps/shared/lib/src/schemas/api/ready-response.schema.ts":
+    case PrerequisiteFile.SHARED_SCHEMAS_API_READY_RESPONSE_SCHEMA_TS:
       return (
         /export const ReadyResponseSchema\s*=\s*Schema\.Object\(/.test(
           content,
         ) &&
         /checks:\s*Schema\.Record\(/.test(content) &&
-        ["ready", "unavailable", "ok", "failed"].every((value) => {
-          return content.includes(`Schema.Const("${value}")`);
+        Object.entries(ReadinessValue).every(([member, value]) => {
+          const enumName =
+            value === ReadinessValue.READY ||
+            value === ReadinessValue.UNAVAILABLE
+              ? "ReadinessStatus"
+              : "ReadinessCheckStatus";
+          return (
+            content.includes(`Schema.Const("${value}")`) ||
+            content.includes(`Schema.Const('${value}')`) ||
+            content.includes(`Schema.Const(${enumName}.${member})`) ||
+            new RegExp(
+              `Schema\\.String\\(\\{\\s*enum:\\s*Object\\.values\\(${enumName}\\)`,
+            ).test(content)
+          );
         })
       );
-    case "apps/server/src/services/database-readiness.boot.ts":
+    case PrerequisiteFile.SERVER_SERVICES_DATABASE_READINESS_BOOT_TS:
       return (
         /registerReadinessCheck\(["']database["']\s*,/.test(content) &&
         (/await \$mongo\.command\(\{\s*ping:\s*1\s*\}\)/.test(content) ||
           /await sql`select 1`\.execute\(\$db\)/.test(content))
       );
-    case "apps/server/src/services/redis-readiness.boot.ts":
+    case PrerequisiteFile.SERVER_SERVICES_REDIS_READINESS_BOOT_TS:
       return (
         /registerReadinessCheck\(["']redis["']\s*,/.test(content) &&
         /await \$redis\.ping\(\)/.test(content)
       );
-    case "apps/server/src/services/database-readiness.test.ts":
+    case PrerequisiteFile.SERVER_SERVICES_DATABASE_READINESS_TEST_TS:
       return (
         content.includes("DatabaseReadinessBoot.handler(") &&
         content.includes("runReadinessChecks()") &&
-        content.includes('database: "failed"')
+        (content.includes('database: "failed"') ||
+          /database:\s*ReadinessCheckStatus\.FAILED/.test(content))
       );
-    case "apps/server/src/services/redis-readiness.test.ts":
+    case PrerequisiteFile.SERVER_SERVICES_REDIS_READINESS_TEST_TS:
       return (
         content.includes('"/ready"') &&
-        content.includes('database: "ok"') &&
-        content.includes('redis: "ok"')
+        (content.includes('database: "ok"') ||
+          /database:\s*ReadinessCheckStatus\.OK/.test(content)) &&
+        (content.includes('redis: "ok"') ||
+          /redis:\s*ReadinessCheckStatus\.OK/.test(content))
       );
-    case "apps/web/tsconfig.json":
+    case PrerequisiteFile.WEB_TSCONFIG_JSON:
       return (
         content.includes('"react-jsx"') &&
         content.includes('".next/dev/types/**/*.ts"')
@@ -398,7 +470,10 @@ function restoreIgnoreFiles(
 ): string[] {
   if (existsSync(join(projectDir, ".gitignore"))) return [];
   const restored: string[] = [];
-  for (const relPath of ["_gitignore", "apps/server/_gitignore"]) {
+  for (const relPath of [
+    PrerequisiteFile._GITIGNORE,
+    PrerequisiteFile.SERVER__GITIGNORE,
+  ]) {
     const dstRel = join(dirname(relPath), targetName(basename(relPath)));
     const dstPath = join(projectDir, dstRel);
     if (existsSync(dstPath)) continue;
@@ -419,59 +494,74 @@ async function upgradeReleasePrerequisites(
   const prerequisites: [string, string, string][] = [
     [
       "base",
-      "_gitignore",
+      PrerequisiteFile.SHARED_VALUES_WIRE_TS,
+      "provide compile-time wire-value pins",
+    ],
+    [
+      "base",
+      PrerequisiteFile.SHARED_VALUES_HEALTH_TS,
+      "provide the health response values",
+    ],
+    [
+      "base",
+      PrerequisiteFile.SERVER_APP_ROUTE_VALUES_TS,
+      "provide the route method values",
+    ],
+    [
+      "base",
+      PrerequisiteFile._GITIGNORE,
       "ignore local secrets, dependencies and generated build artefacts",
     ],
     [
       "base",
-      "apps/server/_gitignore",
+      PrerequisiteFile.SERVER__GITIGNORE,
       "ignore generated local server commands",
     ],
     [
       "base",
-      "Dockerfile.server",
+      PrerequisiteFile.DOCKERFILE_SERVER,
       "start the production server and embed version and commit",
     ],
     [
       selections.workers ? "server/workers" : "base",
-      "apps/server/process.config.js",
+      PrerequisiteFile.SERVER_PROCESS_CONFIG_JS,
       "default each PM2 process to one instance",
     ],
     [
       "base",
-      "apps/server/src/app/process-config.test.ts",
+      PrerequisiteFile.SERVER_APP_PROCESS_CONFIG_TEST_TS,
       "assert the PM2 instance default",
     ],
     [
       "base",
-      "apps/server/src/handlers/ping.route.ts",
+      PrerequisiteFile.SERVER_HANDLERS_PING_ROUTE_TS,
       "report version and commit without logging the environment",
     ],
     [
       "base",
-      "apps/server/src/handlers/ping.test.ts",
+      PrerequisiteFile.SERVER_HANDLERS_PING_TEST_TS,
       "assert the release health response",
     ],
     [
       "base",
-      "apps/shared/lib/src/schemas/api/ping-response.schema.ts",
+      PrerequisiteFile.SHARED_SCHEMAS_API_PING_RESPONSE_SCHEMA_TS,
       "type the release health metadata",
     ],
     [
       `db/${selections.database}`,
-      "apps/server/src/utils/env.ts",
+      PrerequisiteFile.SERVER_UTILS_ENV_TS,
       "read the release version and commit",
     ],
     [
       `frontend/${selections.frontend}`,
-      "Dockerfile.web",
+      PrerequisiteFile.DOCKERFILE_WEB,
       "build the web image with release labels and the correct working directory",
     ],
   ];
-  if (selections.frontend === "nextjs") {
+  if (selections.frontend === Frontend.NEXTJS) {
     prerequisites.push([
       "frontend/nextjs",
-      "apps/web/tsconfig.json",
+      PrerequisiteFile.WEB_TSCONFIG_JSON,
       "keep Next.js builds from rewriting the TypeScript configuration",
     ]);
   }
@@ -486,10 +576,10 @@ async function upgradeReleasePrerequisites(
     ".claude/skills/code-review/references/mutation-testing.md",
     "apps/server/src/handlers/auth/password-reset-token.ts",
     ...(!selections.rateLimit
-      ? ["apps/server/src/middleware/rate-limit.ts"]
+      ? [PrerequisiteFile.SERVER_MIDDLEWARE_RATE_LIMIT_TS]
       : []),
     "apps/server/src/test/db-helpers.ts",
-    ...(selections.frontend === "tanstack"
+    ...(selections.frontend === Frontend.TANSTACK
       ? [
           "apps/web/src/routes/forgot-password.tsx",
           "apps/web/src/routes/login.tsx",
@@ -519,10 +609,24 @@ async function upgradeRateLimitPrerequisites(
   ctx: ApplyContext,
 ): Promise<void> {
   if (!selections.rateLimit) return;
+  let limiterPath = join(
+    ctx.projectDir,
+    PrerequisiteFile.SERVER_MIDDLEWARE_RATE_LIMIT_TS,
+  );
+  let upgradeLimiter =
+    !existsSync(limiterPath) ||
+    !prerequisiteSatisfied(
+      PrerequisiteFile.SERVER_MIDDLEWARE_RATE_LIMIT_TS,
+      readFileSync(limiterPath, "utf8"),
+      true,
+    );
   for (const [fragment, relPath] of [
-    [`db/${selections.database}`, "apps/server/src/utils/env.ts"],
+    ["base", PrerequisiteFile.SHARED_VALUES_WIRE_TS],
+    ["base", PrerequisiteFile.SERVER_MIDDLEWARE_RATE_LIMIT_KEY_TS],
+    ["base", PrerequisiteFile.SERVER_APP_ROUTE_VALUES_TS],
+    [`db/${selections.database}`, PrerequisiteFile.SERVER_UTILS_ENV_TS],
     ["base", "apps/server/src/utils/env.test.ts"],
-    ["server/rate-limit", "apps/server/src/middleware/rate-limit.ts"],
+    ["server/rate-limit", PrerequisiteFile.SERVER_MIDDLEWARE_RATE_LIMIT_TS],
     ["server/rate-limit", "apps/server/src/middleware/rate-limit.test.ts"],
   ]) {
     await upgradePrerequisite(
@@ -532,6 +636,20 @@ async function upgradeRateLimitPrerequisites(
       { ...ctx, selections },
     );
   }
+  if (upgradeLimiter) {
+    for (let relPath of [
+      PrerequisiteFile.SERVER_HANDLERS_AUTH_CONFIRM_PASSWORD_RESET_ROUTE_TS,
+      PrerequisiteFile.SERVER_HANDLERS_AUTH_LOGIN_WITH_FIREBASE_ROUTE_TS,
+    ]) {
+      if (!existsSync(join(ctx.projectDir, relPath))) continue;
+      await upgradePrerequisite(
+        "base",
+        relPath,
+        "use enum keys with the upgraded rate limiter",
+        ctx,
+      );
+    }
+  }
 }
 
 async function upgradeReadinessPrerequisites(
@@ -540,11 +658,14 @@ async function upgradeReadinessPrerequisites(
 ): Promise<void> {
   const prerequisites: [string, string, string][] = [
     ...[
-      "apps/server/src/app/readiness.ts",
-      "apps/server/src/app/readiness.test.ts",
-      "apps/server/src/handlers/ready.route.ts",
-      "apps/server/src/handlers/ready.test.ts",
-      "apps/shared/lib/src/schemas/api/ready-response.schema.ts",
+      PrerequisiteFile.SHARED_VALUES_WIRE_TS,
+      PrerequisiteFile.SHARED_VALUES_HEALTH_TS,
+      PrerequisiteFile.SERVER_APP_ROUTE_VALUES_TS,
+      PrerequisiteFile.SERVER_APP_READINESS_TS,
+      PrerequisiteFile.SERVER_APP_READINESS_TEST_TS,
+      PrerequisiteFile.SERVER_HANDLERS_READY_ROUTE_TS,
+      PrerequisiteFile.SERVER_HANDLERS_READY_TEST_TS,
+      PrerequisiteFile.SHARED_SCHEMAS_API_READY_RESPONSE_SCHEMA_TS,
     ].map((path): [string, string, string] => [
       "base",
       path,
@@ -552,12 +673,12 @@ async function upgradeReadinessPrerequisites(
     ]),
     [
       `db/${selections.database}`,
-      "apps/server/src/services/database-readiness.boot.ts",
+      PrerequisiteFile.SERVER_SERVICES_DATABASE_READINESS_BOOT_TS,
       "register the database readiness check",
     ],
     [
       `db/${selections.database}`,
-      "apps/server/src/services/database-readiness.test.ts",
+      PrerequisiteFile.SERVER_SERVICES_DATABASE_READINESS_TEST_TS,
       "test the database readiness check",
     ],
   ];
@@ -568,8 +689,8 @@ async function upgradeReadinessPrerequisites(
     selections.websockets
   ) {
     for (const path of [
-      "apps/server/src/services/redis-readiness.boot.ts",
-      "apps/server/src/services/redis-readiness.test.ts",
+      PrerequisiteFile.SERVER_SERVICES_REDIS_READINESS_BOOT_TS,
+      PrerequisiteFile.SERVER_SERVICES_REDIS_READINESS_TEST_TS,
     ]) {
       prerequisites.push([
         "server/redis",
@@ -593,7 +714,7 @@ function reportReleaseReadiness(projectDir: string): void {
     cwd: projectDir,
     encoding: "utf8",
   }).trim();
-  if (branch !== "main") {
+  if (branch !== ReleaseBranch.MAIN) {
     log.warn(
       `Current branch is ${branch || "detached HEAD"}; releases require main. The branch was left unchanged.`,
     );
@@ -862,7 +983,8 @@ export async function runAdd(options: AddOptions): Promise<void> {
   const offAxes: AddFeature[] = SERVER_AXES.filter(
     (axis) => !before[AXIS_KEY[axis]],
   );
-  if (before.ci === "none") offAxes.push("ci-github", "ci-gitlab");
+  if (before.ci === Ci.NONE)
+    offAxes.push(AddFeature.CI_GITHUB, AddFeature.CI_GITLAB);
 
   let axes = [...new Set(options.axes)];
   if (axes.length === 0) {
@@ -893,14 +1015,14 @@ export async function runAdd(options: AddOptions): Promise<void> {
   const ciFeatures = axes.filter(isCiFeature);
   if (ciFeatures.length > 1) fail("Choose one CI host.");
   const ciFeature = ciFeatures[0];
-  const ciHost = ciFeature === "ci-github" ? "github" : "gitlab";
+  const ciHost = ciFeature === AddFeature.CI_GITHUB ? Ci.GITHUB : Ci.GITLAB;
   if (options.refresh) {
     if (!ciFeature || axes.length !== 1 || before.ci !== ciHost) {
       fail(
         "Refresh requires only ci-<host> matching the project's current CI host.",
       );
     }
-  } else if (ciFeature && before.ci !== "none") {
+  } else if (ciFeature && before.ci !== Ci.NONE) {
     fail(
       "A CI host is already set. Switching hosts is a migration; use --refresh to update the current host.",
     );
@@ -1025,6 +1147,19 @@ export async function runAdd(options: AddOptions): Promise<void> {
   if (ciFeature || fragments.includes("server/rate-limit")) {
     await upgradeRateLimitPrerequisites(after, ctx);
   }
+  if (fragments.includes("websockets/server")) {
+    for (let path of [
+      PrerequisiteFile.SHARED_VALUES_WIRE_TS,
+      PrerequisiteFile.SERVER_UTILS_TOKEN_TYPE_TS,
+    ]) {
+      await upgradePrerequisite(
+        "base",
+        path,
+        "provide the websocket authentication token values and wire-value pins",
+        ctx,
+      );
+    }
+  }
   for (const fragment of fragments) {
     await walkFragment(join(templatesDir, fragment), "", ctx);
   }
@@ -1143,7 +1278,7 @@ export async function runAdd(options: AddOptions): Promise<void> {
     "git diff — review what changed",
     ...(options.install ? [] : ["npm install"]),
     "make dev",
-    ...(axes.includes("websockets")
+    ...(axes.includes(AddFeature.WEBSOCKETS)
       ? ["mount <WebSocketProvider> in the app shell (see README)"]
       : []),
   ];

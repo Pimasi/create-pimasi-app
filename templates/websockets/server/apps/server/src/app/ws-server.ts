@@ -1,3 +1,4 @@
+import { TokenType } from "../utils/token-type";
 import { IncomingMessage, Server } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
@@ -145,7 +146,7 @@ function authenticate(req: IncomingMessage): AuthContext | null {
 
     try {
         let parsed = $jwt.verify(token);
-        if (parsed.type !== "user") return null;
+        if (parsed.type !== TokenType.USER) return null;
 
         let decoded = jwt.decode(token);
         let expiresAt =

@@ -8,9 +8,10 @@ import {
 } from "@tanstack/react-router";
 import { routeTree } from "../__generated__/routeTree.gen";
 import "./styles.css";
+import { BuildMode } from "./values/build";
 
 const HISTORY =
-    import.meta.env.MODE === "cordova"
+    import.meta.env.MODE === BuildMode.CORDOVA
         ? createHashHistory()
         : createBrowserHistory();
 

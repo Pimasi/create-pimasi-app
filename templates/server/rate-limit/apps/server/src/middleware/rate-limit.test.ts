@@ -1,12 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Request, Response } from "express";
-import { RATE_LIMIT } from "./rate-limit";
+import { RATE_LIMIT, RateLimitErrorCode } from "./rate-limit";
 import { $env } from "../utils/env";
 import { $redis } from "../services/redis";
 
-vi.mock("../utils/env", () => ({
-    $env: { NODE_ENV: "production", RATE_LIMIT_ENABLED: true },
-}));
+vi.mock("../utils/env", async (importOriginal) => {
+    let actual = await importOriginal<typeof import("../utils/env")>();
+    return {
+        ...actual,
+        $env: { NODE_ENV: actual.NodeEnv.PRODUCTION, RATE_LIMIT_ENABLED: true },
+    };
+});
 
 vi.mock("../services/redis", () => ({
     $redis: { incr: vi.fn(), expire: vi.fn() },
@@ -55,7 +59,7 @@ describe("RATE_LIMIT", () => {
             handler({ url: "/auth" } as Request, {} as Response, next),
         ).rejects.toMatchObject({
             statusCode: 429,
-            message: "RATE_LIMIT_NO_KEY",
+            message: RateLimitErrorCode.NO_KEY,
             context: { bucket: "login-email" },
         });
         expect(next).not.toHaveBeenCalled();

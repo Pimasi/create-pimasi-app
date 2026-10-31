@@ -1,9 +1,11 @@
+import { ReadinessStatus } from "@pimasi/lib/values/health";
+import { RouteMethod } from "../app/route-values";
 import { ReadyResponseSchema } from "@pimasi/lib/schemas/api/ready-response.schema";
 import { Route } from "../app/route";
 import { runReadinessChecks } from "../app/readiness";
 
 export const ReadyRoute = Route({
-    method: "get",
+    method: RouteMethod.GET,
     route: "/ready",
     docs: {
         tags: ["Health"],
@@ -22,7 +24,9 @@ export const ReadyRoute = Route({
     handler: [
         async (req, res) => {
             let result = await runReadinessChecks();
-            res.status(result.status === "ready" ? 200 : 503).json(result);
+            res.status(
+                result.status === ReadinessStatus.READY ? 200 : 503,
+            ).json(result);
         },
     ],
 });

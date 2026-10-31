@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { extname, join } from "node:path";
-import type { Selections } from "./types.js";
+import { AddFeature, Ci, type Selections } from "./types.js";
 
 export const IGNORE_ENTRIES = new Set<string>([
   "node_modules",
@@ -155,20 +155,23 @@ export function compose(
     copyDir(join(templatesDir, "server", "redis"), targetDir);
   }
   if (selections.rateLimit) {
-    copyDir(join(templatesDir, "server", "rate-limit"), targetDir);
+    copyDir(join(templatesDir, "server", AddFeature.RATE_LIMIT), targetDir);
   }
   if (selections.workers) {
-    copyDir(join(templatesDir, "server", "workers"), targetDir);
+    copyDir(join(templatesDir, "server", AddFeature.WORKERS), targetDir);
   }
   if (selections.cache) {
-    copyDir(join(templatesDir, "server", "cache"), targetDir);
+    copyDir(join(templatesDir, "server", AddFeature.CACHE), targetDir);
   }
   if (selections.websockets) {
-    copyDir(join(templatesDir, "websockets", "server"), targetDir);
+    copyDir(join(templatesDir, AddFeature.WEBSOCKETS, "server"), targetDir);
   }
   copyDir(join(templatesDir, "frontend", selections.frontend), targetDir);
   if (selections.websockets) {
-    copyDir(join(templatesDir, "websockets", selections.frontend), targetDir);
+    copyDir(
+      join(templatesDir, AddFeature.WEBSOCKETS, selections.frontend),
+      targetDir,
+    );
   }
   copyDir(
     join(templatesDir, "design", selections.design, selections.frontend),
@@ -177,7 +180,7 @@ export function compose(
   if (selections.cordova) {
     copyDir(join(templatesDir, "cordova", selections.frontend), targetDir);
   }
-  if (selections.ci !== "none") {
+  if (selections.ci !== Ci.NONE) {
     copyDir(join(templatesDir, "ci", "common"), targetDir);
     copyDir(join(templatesDir, "ci", selections.ci), targetDir);
   }

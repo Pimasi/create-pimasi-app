@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
+import { BuildMode } from "./src/values/build";
 
 function injectCordovaJs(): Plugin {
     return {
@@ -19,7 +20,7 @@ function injectCordovaJs(): Plugin {
 }
 
 export default defineConfig(({ mode }) => ({
-    base: mode === "cordova" ? "./" : "/",
+    base: mode === BuildMode.CORDOVA ? "./" : "/",
     plugins: [
         tanstackRouter({
             generatedRouteTree: "__generated__/routeTree.gen.ts",
@@ -27,7 +28,7 @@ export default defineConfig(({ mode }) => ({
         }),
         react(),
         tailwindcss(),
-        mode === "cordova" && injectCordovaJs(),
+        mode === BuildMode.CORDOVA && injectCordovaJs(),
     ],
     server: {
         host: "0.0.0.0",

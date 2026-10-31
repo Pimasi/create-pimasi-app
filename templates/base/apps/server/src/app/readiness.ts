@@ -1,3 +1,7 @@
+import {
+    ReadinessStatus,
+    ReadinessCheckStatus,
+} from "@pimasi/lib/values/health";
 import type { ReadyResponse } from "@pimasi/lib/schemas/api/ready-response.schema";
 import { $logger } from "../utils/logger";
 
@@ -30,10 +34,10 @@ export async function runReadinessChecks(): Promise<ReadyResponse> {
                         }, CHECK_TIMEOUT_MS);
                     }),
                 ]);
-                return [name, "ok"] as const;
+                return [name, ReadinessCheckStatus.OK] as const;
             } catch (err) {
                 $logger.error({ name, err }, "readiness check failed");
-                return [name, "failed"] as const;
+                return [name, ReadinessCheckStatus.FAILED] as const;
             } finally {
                 clearTimeout(timeout);
             }
@@ -41,9 +45,11 @@ export async function runReadinessChecks(): Promise<ReadyResponse> {
     );
     let checks = Object.fromEntries(results);
     return {
-        status: results.every(([, result]) => result === "ok")
-            ? "ready"
-            : "unavailable",
+        status: results.every(
+            ([, result]) => result === ReadinessCheckStatus.OK,
+        )
+            ? ReadinessStatus.READY
+            : ReadinessStatus.UNAVAILABLE,
         checks,
     };
 }

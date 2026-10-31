@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { ButtonSize, ButtonVariant } from "@/components/ui/button.values";
 import { useAuth } from "@/hooks/use-auth";
 
 export function AppHeader() {
@@ -19,13 +20,20 @@ export function AppHeader() {
                         <span className="text-muted-foreground text-sm">
                             {user.name}
                         </span>
-                        <Button variant="outline" size="sm" onClick={logout}>
+                        <Button
+                            variant={ButtonVariant.OUTLINE}
+                            size={ButtonSize.SM}
+                            onClick={logout}
+                        >
                             Log out
                         </Button>
                     </>
                 ) : (
                     <Link href="/login">
-                        <Button variant="default" size="sm">
+                        <Button
+                            variant={ButtonVariant.DEFAULT}
+                            size={ButtonSize.SM}
+                        >
                             Log in
                         </Button>
                     </Link>

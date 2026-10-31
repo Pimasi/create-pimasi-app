@@ -3,6 +3,12 @@ import { sortBy } from "lodash";
 import { Route } from "./route";
 import { NotImplemented } from "@pimasi/utils/lib/error";
 
+export enum SwaggerSecurityType {
+    API_KEY = "api_key",
+    BEARER = "bearer",
+    OAUTH2 = "oauth2",
+}
+
 export interface SwaggerConfig {
     enabled?: boolean;
     path?: string;
@@ -11,7 +17,7 @@ export interface SwaggerConfig {
         description?: string;
         version?: string;
     };
-    securityType?: "api_key" | "bearer" | "oauth2";
+    securityType?: SwaggerSecurityType;
 }
 
 export function createSwaggerDocs({
@@ -23,7 +29,7 @@ export function createSwaggerDocs({
 }) {
     let parsedSecuritySchemes = !securityType
         ? undefined
-        : securityType === "api_key"
+        : securityType === SwaggerSecurityType.API_KEY
           ? {
                 api_key: {
                     type: "apiKey",
@@ -31,7 +37,7 @@ export function createSwaggerDocs({
                     name: "Authorization",
                 },
             }
-          : securityType === "bearer"
+          : securityType === SwaggerSecurityType.BEARER
             ? {
                   bearer: {
                       type: "http",
@@ -39,7 +45,7 @@ export function createSwaggerDocs({
                       bearerFormat: "JWT",
                   },
               }
-            : securityType === "oauth2"
+            : securityType === SwaggerSecurityType.OAUTH2
               ? (() => {
                     throw NotImplemented("oauth2 not implemented yet");
                 })()

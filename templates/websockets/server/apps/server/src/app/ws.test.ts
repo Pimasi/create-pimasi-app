@@ -1,3 +1,4 @@
+import { WSEventType } from "@pimasi/lib/values/ws-events";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { once } from "node:events";
 import { WebSocket } from "ws";
@@ -42,13 +43,13 @@ describe("websockets", () => {
 
         await wsDispatch.publish({
             user_id: userId,
-            event: { type: "notification", title: "hi" },
+            event: { type: WSEventType.NOTIFICATION, title: "hi" },
         });
 
         let [data] = await received;
 
         expect(JSON.parse(data.toString())).toEqual({
-            type: "notification",
+            type: WSEventType.NOTIFICATION,
             title: "hi",
         });
     });

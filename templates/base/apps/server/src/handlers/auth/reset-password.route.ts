@@ -1,3 +1,4 @@
+import { RouteMethod } from "../../app/route-values";
 import { Route } from "../../app/route";
 import { Schema } from "@pimasi/utils/lib/json-schema";
 import { dispatchResetPasswordEmail } from "../email/dispatch";
@@ -7,7 +8,7 @@ import { RATE_LIMIT } from "../../middleware/rate-limit";
 import { getRequestOrigin } from "../../utils/request-origin";
 
 export const ResetPasswordRoute = Route({
-    method: "post",
+    method: RouteMethod.POST,
     route: "/auth/reset-password",
     docs: {
         tags: ["Auth"],

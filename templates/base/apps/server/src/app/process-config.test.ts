@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
+import { NodeEnv } from "../utils/env";
 
 describe("production process count", () => {
     it.each([undefined, "", "3"])(
         "treats PM2_INSTANCES=%s as the requested count or one",
         (value) => {
-            let env = { ...process.env, NODE_ENV: "production" };
+            let env = { ...process.env, NODE_ENV: NodeEnv.PRODUCTION };
             if (value === undefined) delete env.PM2_INSTANCES;
             else env.PM2_INSTANCES = value;
             let output = execFileSync(

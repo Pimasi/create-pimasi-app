@@ -1,6 +1,12 @@
+import {
+    ReadinessStatus,
+    ReadinessCheckStatus,
+} from "@pimasi/lib/values/health";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerReadinessCheck, runReadinessChecks } from "./readiness";
 import { $logger } from "../utils/logger";
+
+const STALLED_CHECK_NAMES: readonly string[] = ["slow", "stalled"];
 
 describe("readiness checks", () => {
     let removeChecks: (() => void)[] = [];
@@ -14,7 +20,7 @@ describe("readiness checks", () => {
 
     it("is ready with no registered checks", async () => {
         expect(await runReadinessChecks()).toEqual({
-            status: "ready",
+            status: ReadinessStatus.READY,
             checks: {},
         });
     });
@@ -23,7 +29,7 @@ describe("readiness checks", () => {
         vi.useFakeTimers();
         let errors = vi.spyOn($logger, "error").mockImplementation(() => {});
         let started: string[] = [];
-        for (let name of ["slow", "stalled"]) {
+        for (let name of STALLED_CHECK_NAMES) {
             removeChecks.push(
                 registerReadinessCheck(name, async () => {
                     started.push(name);
@@ -36,10 +42,14 @@ describe("readiness checks", () => {
         let result = runReadinessChecks();
         await vi.advanceTimersByTimeAsync(2_000);
 
-        expect(started).toEqual(["slow", "stalled"]);
+        expect(started).toEqual(STALLED_CHECK_NAMES);
         expect(await result).toEqual({
-            status: "unavailable",
-            checks: { slow: "failed", stalled: "failed", fast: "ok" },
+            status: ReadinessStatus.UNAVAILABLE,
+            checks: {
+                slow: ReadinessCheckStatus.FAILED,
+                stalled: ReadinessCheckStatus.FAILED,
+                fast: ReadinessCheckStatus.OK,
+            },
         });
         expect(errors).toHaveBeenCalledTimes(2);
         expect(vi.getTimerCount()).toBe(0);
@@ -55,8 +65,8 @@ describe("readiness checks", () => {
         removeChecks.push(restore);
 
         expect(await runReadinessChecks()).toEqual({
-            status: "unavailable",
-            checks: { database: "failed" },
+            status: ReadinessStatus.UNAVAILABLE,
+            checks: { database: ReadinessCheckStatus.FAILED },
         });
         expect(errors).toHaveBeenCalledWith(
             { name: "database", err: error },
@@ -64,8 +74,8 @@ describe("readiness checks", () => {
         );
         restore();
         expect(await runReadinessChecks()).toEqual({
-            status: "ready",
-            checks: { database: "ok" },
+            status: ReadinessStatus.READY,
+            checks: { database: ReadinessCheckStatus.OK },
         });
     });
 });

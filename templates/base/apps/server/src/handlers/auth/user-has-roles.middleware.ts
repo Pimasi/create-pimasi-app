@@ -1,9 +1,9 @@
 import { RequestHandler } from "express";
 import { getSessionUserOrFail } from "./get-session-user-or-fail";
-import { UserRoles } from "@pimasi/lib/values/auth";
+import { UserRole } from "@pimasi/lib/values/auth";
 import { Unauthorized } from "@pimasi/utils/lib/error";
 
-export const HAS_ROLES: (permissions: UserRoles[]) => RequestHandler = (
+export const HAS_ROLES: (permissions: UserRole[]) => RequestHandler = (
     permissions,
 ) => {
     return async (req, res, next) => {
@@ -11,7 +11,7 @@ export const HAS_ROLES: (permissions: UserRoles[]) => RequestHandler = (
 
         let isAuthorised = !permissions.length
             ? true
-            : [UserRoles.ADMIN, ...permissions].some((permission) => {
+            : [UserRole.ADMIN, ...permissions].some((permission) => {
                   return user.roles.includes(permission);
               });
 

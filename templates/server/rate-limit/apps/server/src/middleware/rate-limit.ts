@@ -1,7 +1,9 @@
+import { wireValues } from "@pimasi/lib/values/wire";
+import { RateLimitKey } from "./rate-limit-key";
 import { TooManyRequests } from "@pimasi/utils/lib/error";
 import { Request, RequestHandler } from "express";
 import { createHash } from "node:crypto";
-import { $env } from "../utils/env";
+import { $env, NodeEnv } from "../utils/env";
 import { $logger } from "../utils/logger";
 import { $redis } from "../services/redis";
 import { $jwt } from "../utils/jwt";
@@ -29,12 +31,17 @@ import { $jwt } from "../utils/jwt";
  * Set RATE_LIMIT_ENABLED=false to disable it in production too.
  */
 
-export type RateLimitKey =
-    "ip" | "auth-token" | ((req: Request) => string | null | undefined);
+export { RateLimitKey } from "./rate-limit-key";
+
+export enum RateLimitErrorCode {
+    NO_KEY = "RATE_LIMIT_NO_KEY",
+    LIMITED = "RATE_LIMITED",
+}
+wireValues(RateLimitErrorCode, ["RATE_LIMIT_NO_KEY", "RATE_LIMITED"]);
 
 export interface RateLimitOptions {
     bucket: string;
-    key: RateLimitKey;
+    key: RateLimitKey | ((req: Request) => string | null | undefined);
     max: number;
     windowSeconds: number;
 }
@@ -43,7 +50,7 @@ export function RATE_LIMIT(opts: RateLimitOptions): RequestHandler {
     let resolve = toResolver(opts.key);
 
     return async (req, res, next) => {
-        if ($env.NODE_ENV !== "production" || !$env.RATE_LIMIT_ENABLED)
+        if ($env.NODE_ENV !== NodeEnv.PRODUCTION || !$env.RATE_LIMIT_ENABLED)
             return next();
 
         let fragment = resolve(req);
@@ -55,7 +62,10 @@ export function RATE_LIMIT(opts: RateLimitOptions): RequestHandler {
                 { bucket: opts.bucket, url: req.url },
                 "rate-limit: no key resolved",
             );
-            throw TooManyRequests({ bucket: opts.bucket }, "RATE_LIMIT_NO_KEY");
+            throw TooManyRequests(
+                { bucket: opts.bucket },
+                RateLimitErrorCode.NO_KEY,
+            );
         }
 
         let redisKey = `rate-limit:${opts.bucket}:${fragment}`;
@@ -78,7 +88,7 @@ export function RATE_LIMIT(opts: RateLimitOptions): RequestHandler {
                     window_seconds: opts.windowSeconds,
                     bucket: opts.bucket,
                 },
-                "RATE_LIMITED",
+                RateLimitErrorCode.LIMITED,
             );
         }
 
@@ -90,10 +100,12 @@ export function RATE_LIMIT(opts: RateLimitOptions): RequestHandler {
     };
 }
 
-function toResolver(key: RateLimitKey): (req: Request) => string | null {
+function toResolver(
+    key: RateLimitKey | ((req: Request) => string | null | undefined),
+): (req: Request) => string | null {
     if (typeof key === "function") return (req) => key(req) ?? null;
-    if (key === "ip") return clientIp;
-    if (key === "auth-token") return authToken;
+    if (key === RateLimitKey.IP) return clientIp;
+    if (key === RateLimitKey.AUTH_TOKEN) return authToken;
     return () => null;
 }
 

@@ -1,6 +1,6 @@
 import { Kysely, PostgresDialect, Generated, ColumnType } from "kysely";
 import { Pool } from "pg";
-import { UserRoles } from "@pimasi/lib/values/auth";
+import { UserRole } from "@pimasi/lib/values/auth";
 import { $env } from "../utils/env";
 
 interface UsersTable {
@@ -12,7 +12,7 @@ interface UsersTable {
     password_hash: string | null;
     firebase_id: string | null;
     disabled_at: ColumnType<Date | null, Date | null, Date | null>;
-    roles: ColumnType<UserRoles[], string, string>;
+    roles: ColumnType<UserRole[], string, string>;
 }
 
 export interface Database {

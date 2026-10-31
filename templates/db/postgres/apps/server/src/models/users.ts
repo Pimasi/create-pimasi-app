@@ -1,5 +1,5 @@
 import { type Selectable } from "kysely";
-import { UserRoles } from "@pimasi/lib/values/auth";
+import { UserRole } from "@pimasi/lib/values/auth";
 import { $db, type Database } from "../services/db";
 
 export interface UserModel {
@@ -32,7 +32,7 @@ export interface UserModel {
      * accounts. Null/undefined for active accounts.
      */
     disabled_at?: Date | null;
-    roles: UserRoles[];
+    roles: UserRole[];
 }
 
 export interface UsersRepo {
@@ -46,9 +46,9 @@ export interface UsersRepo {
     update(id: string, changes: Partial<UserModel>): Promise<void>;
 }
 
-function parseRoles(value: unknown): UserRoles[] {
+function parseRoles(value: unknown): UserRole[] {
     if (typeof value === "string") return JSON.parse(value);
-    return (value as UserRoles[]) ?? [];
+    return (value as UserRole[]) ?? [];
 }
 
 function mapUserRow(row: Selectable<Database["users"]>): UserModel {

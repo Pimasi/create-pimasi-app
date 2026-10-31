@@ -1,6 +1,6 @@
 import { ulid } from "ulid";
 import { $users, UserModel, normaliseEmail } from "../../models/users";
-import { UserRoles } from "@pimasi/lib/values/auth";
+import { UserRole } from "@pimasi/lib/values/auth";
 
 export async function createUser(params: {
     firebaseId?: string;
@@ -20,7 +20,7 @@ export async function createUser(params: {
         password_hash: params.passwordHash,
         firebase_id: params.firebaseId,
         disabled_at: null,
-        roles: [UserRoles.USER],
+        roles: [UserRole.USER],
     };
 
     await $users.insert(user);

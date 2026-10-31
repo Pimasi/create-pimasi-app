@@ -1,8 +1,6 @@
 import { useEffect, useRef } from "react";
-import type {
-    WSEventByType,
-    WSEventType,
-} from "@pimasi/lib/schemas/api/ws-events.schema";
+import type { WSEventByType } from "@pimasi/lib/schemas/api/ws-events.schema";
+import type { WSEventType } from "@pimasi/lib/values/ws-events";
 import { useWebSocket } from "./use-websocket";
 
 export function useWSEvent<T extends WSEventType>(

@@ -1,3 +1,4 @@
+import { RouteMethod } from "../../app/route-values";
 import { Route } from "../../app/route";
 import { BadRequest, Unauthorized } from "@pimasi/utils/lib/error";
 import { getSessionUserOrFail } from "./get-session-user-or-fail";
@@ -14,7 +15,7 @@ import { ErrorResponseSchema } from "@pimasi/lib/schemas/api/error.schema";
 import { Schema } from "@pimasi/utils/lib/json-schema";
 
 export const SetPasswordRoute = Route({
-    method: "post",
+    method: RouteMethod.POST,
     route: `/auth/set-password`,
     docs: {
         tags: ["Auth"],

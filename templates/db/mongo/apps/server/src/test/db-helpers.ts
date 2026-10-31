@@ -1,7 +1,7 @@
 import { MongoClient, type Db, type Collection } from "mongodb";
 import { ulid } from "ulid";
 import type { UserModel } from "../models/users";
-import { UserRoles } from "@pimasi/lib/values/auth";
+import { UserRole } from "@pimasi/lib/values/auth";
 import { getenv } from "@pimasi/utils/lib/helpers";
 
 let _db: Db | null = null;
@@ -40,7 +40,7 @@ export async function seedUser(
         password_hash: overrides.password_hash,
         firebase_id: overrides.firebase_id,
         disabled_at: overrides.disabled_at ?? null,
-        roles: overrides.roles ?? [UserRoles.USER],
+        roles: overrides.roles ?? [UserRole.USER],
     };
 
     await (await users()).insertOne(user);

@@ -10,7 +10,7 @@ This is a **Turborepo + npm workspaces** monorepo. Three workspaces divide the s
 
 - **Web app** (`apps/web/`) — a browser SPA built with either **TanStack Router + Vite** or **Next.js (App Router)**, depending on how the project was generated. Either way it is a pure client of the Express API, styled with Tailwind 4. UI primitives (`Button`, `Input`, `Spinner`) live in the app's own `components/ui/` (imported as `@/components/ui/*`), themed by the design system chosen at scaffold time — shadcn/ui or bespoke tokens — under the same component API either way. When Cordova is enabled, the same web app packages into Android/iOS via the shell in `apps/web/cordova/`.
 - **Server** (`apps/server/`) — Express 5 API on **MongoDB or Postgres**, with **optional Firebase** auth alongside email/password. Four server features are **optional, chosen at scaffold time or added later** (`npx pimasi add <feature>` — it reads `pimasi.json`), and present only if selected: **background workers** (BullMQ queues + a separate `workers` process), a Redis-backed **`$cache` service**, Redis-backed **rate limiting** on the auth routes, and **WebSockets** (realtime push over `$bus`, the Redis-backed messaging seam — ephemeral broadcast channels by default, durable channels with consumer groups via `$bus.channel(name, { durable: true })`; when selected, mount the shipped `WebSocketProvider` in your app shell and subscribe with `useWSEvent`). The database sits behind a repository interface (`apps/server/src/models/*.ts`), so the auth handlers never see the driver.
-- **Shared lib** (`apps/shared/lib/`) — `@pimasi/lib`: the runtime **schemas** (request/response shapes) and **values** (enums like `UserRoles`) shared by web and server.
+- **Shared lib** (`apps/shared/lib/`) — `@pimasi/lib`: the runtime **schemas** (request/response shapes) and **values** (enums like `UserRole`) shared by web and server.
 
 External utilities come from the published **`@pimasi/utils`** package (HTTP client, JSON-schema, logger, typed errors, helpers) — never rename it.
 
@@ -107,7 +107,7 @@ The template ships ready to run. To turn it into your own product:
 - **Set your env.** `make setup` copies `.env.example` to `.env`; fill in `JWT_SECRET` and your database credentials. Firebase and SendGrid are **optional** (leave blank to disable).
 - **The name is already wired in.** The generator stamped the app name into everything: the root package, the `@pimasi/lib` workspace scope, and the server / web package names. Nothing needs renaming, and **never rename `@pimasi/utils`**, the external published dependency.
 - **Add your first feature.** Start with a schema in `@pimasi/lib`, then a server model, routes + tests, and a web hook + page.
-- **Keep the contracts.** Auth (`UserModel`, `UserRoles`, the user JWT) and the session `AsyncLocalStorage` are shared plumbing every feature depends on — extend them, don't fork them.
+- **Keep the contracts.** Auth (`UserModel`, `UserRole`, the user JWT) and the session `AsyncLocalStorage` are shared plumbing every feature depends on — extend them, don't fork them.
 
 `WithCredentials` wraps protected pages; pass `onUnauthenticated` to provide login navigation.
 

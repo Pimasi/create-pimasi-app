@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { ButtonSize, ButtonVariant } from "@/components/ui/button.values";
 import { Input } from "@/components/ui/input";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useAuth } from "@/hooks/use-auth";
@@ -85,8 +86,8 @@ export default function LoginPage() {
 
                 <Button
                     type="submit"
-                    variant="default"
-                    size="lg"
+                    variant={ButtonVariant.DEFAULT}
+                    size={ButtonSize.LG}
                     disabled={loading}
                 >
                     {loading ? "Logging in..." : "Log in"}
@@ -109,8 +110,8 @@ export default function LoginPage() {
             </div>
 
             <Button
-                variant="outline"
-                size="lg"
+                variant={ButtonVariant.OUTLINE}
+                size={ButtonSize.LG}
                 onClick={handleGoogleLogin}
                 disabled={loading}
                 className="w-full max-w-sm"

@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { ButtonSize, ButtonVariant } from "@/components/ui/button.values";
 import { Input } from "@/components/ui/input";
 import { useDocumentTitle } from "@/hooks/use-document-title";
 import { useAuth } from "../hooks/use-auth";
@@ -98,8 +99,8 @@ function LoginPage() {
                         Please check your inbox (and spam folder) to proceed.
                     </p>
                     <Button
-                        variant="outline"
-                        size="lg"
+                        variant={ButtonVariant.OUTLINE}
+                        size={ButtonSize.LG}
                         onClick={() => setEmailSent(false)}
                         className="w-full max-w-sm mt-4"
                     >
@@ -138,8 +139,8 @@ function LoginPage() {
 
                 <Button
                     type="submit"
-                    variant="default"
-                    size="lg"
+                    variant={ButtonVariant.DEFAULT}
+                    size={ButtonSize.LG}
                     disabled={loading}
                 >
                     {loading ? "Logging in..." : "Log in"}
@@ -162,8 +163,8 @@ function LoginPage() {
             </div>
 
             <Button
-                variant="outline"
-                size="lg"
+                variant={ButtonVariant.OUTLINE}
+                size={ButtonSize.LG}
                 onClick={handleGoogleLogin}
                 disabled={loading}
                 className="w-full max-w-sm"

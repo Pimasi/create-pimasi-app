@@ -1,10 +1,11 @@
+import { SwaggerSecurityType } from "./app/swagger";
 import { $logger } from "./utils/logger";
 import { REQUEST_LOGGER_MIDDLEWARE } from "./middleware/log-request";
 import { REQUEST_ID_MIDDLEWARE } from "./middleware/request-id";
 import { AppServer } from "./app/http-server";
 import { Boot } from "./app/boot";
 import { $session } from "./app/session.service";
-import { $env } from "./utils/env";
+import { $env, NodeEnv } from "./utils/env";
 import { ERROR_HANDLER_MIDDLEWARE } from "./middleware/error-handler";
 import { PARSE_SESSION_MIDDLEWARE } from "./handlers/auth/parse-session.middleware";
 import { runMigrations } from "./migrations";
@@ -17,7 +18,7 @@ import { RequestHandler } from "express";
 $session.run({}, async () => {
     await runMigrations();
 
-    let isProduction = $env.NODE_ENV === "production";
+    let isProduction = $env.NODE_ENV === NodeEnv.PRODUCTION;
 
     let preRouteMiddleware: (RequestHandler | [string, RequestHandler])[] = [
         cors({ origin: true, credentials: true }),
@@ -28,7 +29,7 @@ $session.run({}, async () => {
 
     let app = await AppServer({
         swagger: {
-            securityType: "bearer",
+            securityType: SwaggerSecurityType.BEARER,
             enabled: !isProduction,
             info: {
                 title: "Pimasi Starter API",

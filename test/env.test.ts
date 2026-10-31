@@ -15,26 +15,55 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  ReservedEnvironment,
+  ReleaseBoolean,
+  Command,
+  Ci,
+} from "../src/types.js";
+
+enum Prompt {
+  NAME = "Environment name?",
+  RELATION = "How does this environment relate",
+  BEFORE = "Before which environment?",
+  ON_MERGE = "Deploy automatically after a merge to main?",
+  PUBLISH = "Create a version when deployed here?",
+  REMOVE = "Remove environment",
+}
+
+enum HostFailure {
+  TOOL_MISSING = "toolMissing",
+  SIGNED_OUT = "signedOut",
+  NO_REMOTE = "noRemote",
+  REFUSE_WRITES = "refuseWrites",
+}
+
+enum FileChange {
+  EDIT = "edit",
+  ADD = "add",
+  DELETE = "delete",
+}
 
 const CLI = fileURLToPath(new URL("../dist/index.js", import.meta.url));
 const PRODUCTION = "RELEASE_PUBLISH=true\nRELEASE_HEALTH_URL=\n";
 
-for (let ci of ["github", "gitlab"]) {
+for (let ci of [Ci.GITHUB, Ci.GITLAB]) {
   test(`${ci}: --after creates a follower without changing its prerequisite`, (t) => {
     let project = fixture(t, PRODUCTION, ci);
     let result = run(
       project.dir,
-      "add",
+      Command.ADD,
       "dev",
       "--after",
-      "production",
+      ReservedEnvironment.PRODUCTION,
       "--yes",
     );
     assert.equal(result.status, 0, result.output);
-    assert.equal(project.read("production"), PRODUCTION);
+    assert.equal(project.read(ReservedEnvironment.PRODUCTION), PRODUCTION);
     assert.equal(
       project.read("dev"),
-      PRODUCTION.replace("true", "false") + "RELEASE_AFTER=production\n",
+      PRODUCTION.replace(ReleaseBoolean.TRUE, ReleaseBoolean.FALSE) +
+        "RELEASE_AFTER=production\n",
     );
     assert.match(result.output, /dev follows production/);
   });
@@ -44,15 +73,15 @@ for (let ci of ["github", "gitlab"]) {
     let uat = "RELEASE_PUBLISH=false\nRELEASE_AFTER=production\n";
     writeFileSync(join(project.environments, "uat.env"), uat);
     for (let args of [
-      ["list"],
-      ["add", "dev", "--yes"],
-      ["remove", "uat", "--yes"],
+      [Command.LIST],
+      [Command.ADD, "dev", "--yes"],
+      [Command.REMOVE, "uat", "--yes"],
     ]) {
       let result = run(project.dir, ...args);
       assert.equal(result.status, 1, result.output);
       assert.match(result.output, /Environment relation cycle:/);
       assert.equal(
-        project.read("production"),
+        project.read(ReservedEnvironment.PRODUCTION),
         PRODUCTION + "RELEASE_AFTER=uat\n",
       );
       assert.equal(project.read("uat"), uat);
@@ -65,12 +94,12 @@ for (let ci of ["github", "gitlab"]) {
 
   test(`${ci}: --publish creates an independent environment that creates versions`, (t) => {
     let project = fixture(t, PRODUCTION, ci);
-    let result = run(project.dir, "add", "uat", "--publish", "--yes");
+    let result = run(project.dir, Command.ADD, "uat", "--publish", "--yes");
     assert.equal(result.status, 0, result.output);
     assert.equal(project.read("uat"), PRODUCTION);
-    assert.equal(project.read("production"), PRODUCTION);
+    assert.equal(project.read(ReservedEnvironment.PRODUCTION), PRODUCTION);
     assert.match(result.output, /uat is independent/);
-    let listing = run(project.dir, "list");
+    let listing = run(project.dir, Command.LIST);
     assert.equal(listing.status, 0, listing.output);
     assert.match(listing.output, /uat\s+no\s+yes\s+independent/);
   });
@@ -78,30 +107,33 @@ for (let ci of ["github", "gitlab"]) {
   test(`${ci}: accepts a 32-character environment name`, (t) => {
     let project = fixture(t, PRODUCTION, ci);
     let name = "d".repeat(32);
-    let result = run(project.dir, "add", name, "--yes");
+    let result = run(project.dir, Command.ADD, name, "--yes");
     assert.equal(result.status, 0, result.output);
-    assert.equal(project.read(name), PRODUCTION.replace("true", "false"));
+    assert.equal(
+      project.read(name),
+      PRODUCTION.replace(ReleaseBoolean.TRUE, ReleaseBoolean.FALSE),
+    );
   });
 
   test(`${ci}: refuses a 33-character environment name before writing`, (t) => {
     let project = fixture(t, PRODUCTION, ci);
-    let result = run(project.dir, "add", "d".repeat(33), "--yes");
+    let result = run(project.dir, Command.ADD, "d".repeat(33), "--yes");
     assert.equal(result.status, 1, result.output);
     assert.match(result.output, /at most 32 characters/);
     assert.deepEqual(readdirSync(project.environments), ["production.env"]);
-    assert.equal(project.read("production"), PRODUCTION);
+    assert.equal(project.read(ReservedEnvironment.PRODUCTION), PRODUCTION);
   });
 }
 
-for (let ci of ["none", undefined]) {
+for (let ci of [Ci.NONE, undefined]) {
   test(`refuses environment commands with no CI host: ${ci ?? "missing key"}`, (t) => {
     let project = fixture(t);
     let manifest = JSON.stringify({ ci });
     writeFileSync(join(project.dir, "pimasi.json"), manifest);
     for (let args of [
-      ["list"],
-      ["add", "dev", "--yes"],
-      ["remove", "dev", "--yes"],
+      [Command.LIST],
+      [Command.ADD, "dev", "--yes"],
+      [Command.REMOVE, "dev", "--yes"],
     ]) {
       let result = run(project.dir, ...args);
       assert.equal(result.status, 1, result.output);
@@ -112,12 +144,12 @@ for (let ci of ["none", undefined]) {
         readFileSync(join(project.dir, "pimasi.json"), "utf8"),
         manifest,
       );
-      assert.equal(project.read("production"), PRODUCTION);
+      assert.equal(project.read(ReservedEnvironment.PRODUCTION), PRODUCTION);
     }
   });
 }
 
-function fixture(t: TestContext, content = PRODUCTION, ci = "github") {
+function fixture(t: TestContext, content = PRODUCTION, ci = Ci.GITHUB) {
   let dir = mkdtempSync(join(tmpdir(), "env-test-"));
   let environments = join(dir, "scripts/release/environments");
   mkdirSync(environments, { recursive: true });
@@ -133,7 +165,7 @@ function fixture(t: TestContext, content = PRODUCTION, ci = "github") {
 }
 
 function run(dir: string, ...args: string[]) {
-  let result = spawnSync(process.execPath, [CLI, "env", ...args], {
+  let result = spawnSync(process.execPath, [CLI, Command.ENV, ...args], {
     cwd: dir,
     encoding: "utf8",
     timeout: 5000,
@@ -164,7 +196,7 @@ async function runPrompt(
   );
   let child = spawn(
     process.execPath,
-    ["--import", preload, CLI, "env", ...args],
+    ["--import", preload, CLI, Command.ENV, ...args],
     {
       cwd: dir,
       stdio: ["pipe", "pipe", "pipe"],
@@ -178,14 +210,7 @@ async function runPrompt(
   child.stdin.on("error", () => {});
   child.stdout.on("data", (chunk) => {
     output += chunk;
-    for (let prompt of [
-      "Environment name?",
-      "How does this environment relate",
-      "Before which environment?",
-      "Deploy automatically after a merge to main?",
-      "Create a version when deployed here?",
-      "Remove environment",
-    ]) {
+    for (let prompt of Object.values(Prompt)) {
       if (!output.includes(prompt) || answered.has(prompt)) continue;
       answered.add(prompt);
       if (!edited) {
@@ -197,7 +222,7 @@ async function runPrompt(
           child.stdin.write(
             prompt.startsWith("Create a version")
               ? versionAnswer
-              : prompt === "Remove environment" ||
+              : prompt === Prompt.REMOVE ||
                   prompt.startsWith("Deploy automatically")
                 ? confirmed
                   ? "y\r"
@@ -223,53 +248,63 @@ async function runPrompt(
   return { status, output };
 }
 
-for (let ci of ["github", "gitlab"]) {
+for (let ci of [Ci.GITHUB, Ci.GITLAB]) {
   test(`${ci}: independent environments, insertion and removal`, (t) => {
     let project = fixture(t, PRODUCTION, ci);
     let manifest = readFileSync(join(project.dir, "pimasi.json"), "utf8");
-    let listing = run(project.dir, "list");
+    let listing = run(project.dir, Command.LIST);
     assert.equal(listing.status, 0, listing.output);
     assert.match(
       listing.output,
       /production\s+yes\s+yes\s+independent\s+unset/,
     );
     for (let args of [
-      ["add", "uat", "--before", "production", "--yes"],
-      ["add", "dev", "--yes"],
-      ["add", "qa", "--before", "production", "--yes"],
+      [Command.ADD, "uat", "--before", ReservedEnvironment.PRODUCTION, "--yes"],
+      [Command.ADD, "dev", "--yes"],
+      [Command.ADD, "qa", "--before", ReservedEnvironment.PRODUCTION, "--yes"],
     ]) {
       let result = run(project.dir, ...args);
       assert.equal(result.status, 0, result.output);
       assert.match(
         result.output,
-        ci === "github" ? /gh workflow run/ : /glab ci run/,
+        ci === Ci.GITHUB ? /gh workflow run/ : /glab ci run/,
       );
     }
-    assert.equal(project.read("uat"), PRODUCTION.replace("true", "false"));
-    assert.equal(project.read("dev"), PRODUCTION.replace("true", "false"));
+    assert.equal(
+      project.read("uat"),
+      PRODUCTION.replace(ReleaseBoolean.TRUE, ReleaseBoolean.FALSE),
+    );
+    assert.equal(
+      project.read("dev"),
+      PRODUCTION.replace(ReleaseBoolean.TRUE, ReleaseBoolean.FALSE),
+    );
     assert.equal(
       project.read("qa"),
-      PRODUCTION.replace("true", "false") + "RELEASE_AFTER=uat\n",
+      PRODUCTION.replace(ReleaseBoolean.TRUE, ReleaseBoolean.FALSE) +
+        "RELEASE_AFTER=uat\n",
     );
-    assert.equal(project.read("production"), PRODUCTION + "RELEASE_AFTER=qa\n");
-    assert.equal(run(project.dir, "remove", "qa", "--yes").status, 0);
     assert.equal(
-      project.read("production"),
+      project.read(ReservedEnvironment.PRODUCTION),
+      PRODUCTION + "RELEASE_AFTER=qa\n",
+    );
+    assert.equal(run(project.dir, Command.REMOVE, "qa", "--yes").status, 0);
+    assert.equal(
+      project.read(ReservedEnvironment.PRODUCTION),
       PRODUCTION + "RELEASE_AFTER=uat\n",
     );
-    assert.equal(run(project.dir, "remove", "uat", "--yes").status, 0);
-    assert.equal(project.read("production"), PRODUCTION);
+    assert.equal(run(project.dir, Command.REMOVE, "uat", "--yes").status, 0);
+    assert.equal(project.read(ReservedEnvironment.PRODUCTION), PRODUCTION);
     assert.equal(
       readFileSync(join(project.dir, "pimasi.json"), "utf8"),
       manifest,
     );
     for (let args of [
-      ["add", "dev", "--yes"],
-      ["add", "production", "--yes"],
-      ["remove", "production", "--yes"],
-      ["add", "Bad", "--yes"],
-      ["add", "qa", "--after", "missing", "--yes"],
-      ["add", "qa", "--after", "qa", "--yes"],
+      [Command.ADD, "dev", "--yes"],
+      [Command.ADD, ReservedEnvironment.PRODUCTION, "--yes"],
+      [Command.REMOVE, ReservedEnvironment.PRODUCTION, "--yes"],
+      [Command.ADD, "Bad", "--yes"],
+      [Command.ADD, "qa", "--after", "missing", "--yes"],
+      [Command.ADD, "qa", "--after", "qa", "--yes"],
     ]) {
       assert.equal(run(project.dir, ...args).status, 1, args.join(" "));
     }
@@ -283,20 +318,23 @@ for (let quote of ["'", '"']) {
     let project = fixture(t, original);
     let result = run(
       project.dir,
-      "add",
+      Command.ADD,
       "uat",
       "--before",
-      "production",
+      ReservedEnvironment.PRODUCTION,
       "--yes",
     );
     assert.equal(result.status, 0, result.output);
-    assert.equal(project.read("production"), original + "RELEASE_AFTER=uat\n");
+    assert.equal(
+      project.read(ReservedEnvironment.PRODUCTION),
+      original + "RELEASE_AFTER=uat\n",
+    );
     assert.equal(
       project.read("uat"),
-      PRODUCTION.replace("true", "false") + custom,
+      PRODUCTION.replace(ReleaseBoolean.TRUE, ReleaseBoolean.FALSE) + custom,
     );
-    assert.equal(run(project.dir, "remove", "uat", "--yes").status, 0);
-    assert.equal(project.read("production"), original);
+    assert.equal(run(project.dir, Command.REMOVE, "uat", "--yes").status, 0);
+    assert.equal(project.read(ReservedEnvironment.PRODUCTION), original);
   });
 }
 
@@ -306,14 +344,17 @@ test("preserves CRLF, comments, exported keys and unknown key order", (t) => {
   let project = fixture(t, original);
   let result = run(
     project.dir,
-    "add",
+    Command.ADD,
     "uat",
     "--before",
-    "production",
+    ReservedEnvironment.PRODUCTION,
     "--yes",
   );
   assert.equal(result.status, 0, result.output);
-  assert.equal(project.read("production"), original + "RELEASE_AFTER=uat\r\n");
+  assert.equal(
+    project.read(ReservedEnvironment.PRODUCTION),
+    original + "RELEASE_AFTER=uat\r\n",
+  );
   assert.equal(
     project.read("uat"),
     original
@@ -336,43 +377,47 @@ for (let syntax of [
     let project = fixture(t, original);
     let result = run(
       project.dir,
-      "add",
+      Command.ADD,
       "uat",
       "--before",
-      "production",
+      ReservedEnvironment.PRODUCTION,
       "--yes",
     );
     assert.equal(result.status, 1, result.output);
-    assert.equal(project.read("production"), original);
+    assert.equal(project.read(ReservedEnvironment.PRODUCTION), original);
     assert.deepEqual(readdirSync(project.environments), ["production.env"]);
   });
 }
 
-for (let change of ["edit", "add", "delete"]) {
+for (let change of Object.values(FileChange)) {
   test(`refuses environment ${change} while add prompts are open`, async (t) => {
     let project = fixture(t);
     let productionPath = join(project.environments, "production.env");
     let result = await runPrompt(
       project.dir,
-      ["add", "uat", "--before", "production"],
+      [Command.ADD, "uat", "--before", ReservedEnvironment.PRODUCTION],
       () => {
-        if (change === "edit")
+        if (change === FileChange.EDIT)
           writeFileSync(productionPath, PRODUCTION + "CUSTOM=edited\n");
-        if (change === "add")
+        if (change === FileChange.ADD)
           writeFileSync(
             join(project.environments, "dev.env"),
             "RELEASE_PUBLISH=false\n",
           );
-        if (change === "delete") unlinkSync(productionPath);
+        if (change === FileChange.DELETE) unlinkSync(productionPath);
       },
     );
     assert.equal(result.status, 1, result.output);
     assert.match(result.output, /changed.*again/i);
     assert.equal(existsSync(join(project.environments, "uat.env")), false);
-    if (change === "edit")
-      assert.equal(project.read("production"), PRODUCTION + "CUSTOM=edited\n");
-    if (change === "delete") assert.equal(existsSync(productionPath), false);
-    if (change === "add")
+    if (change === FileChange.EDIT)
+      assert.equal(
+        project.read(ReservedEnvironment.PRODUCTION),
+        PRODUCTION + "CUSTOM=edited\n",
+      );
+    if (change === FileChange.DELETE)
+      assert.equal(existsSync(productionPath), false);
+    if (change === FileChange.ADD)
       assert.equal(project.read("dev"), "RELEASE_PUBLISH=false\n");
   });
 }
@@ -381,12 +426,15 @@ test("refuses edits to the removed environment while confirmation is open", asyn
   let project = fixture(t, PRODUCTION + "RELEASE_AFTER=uat\n");
   let removedPath = join(project.environments, "uat.env");
   writeFileSync(removedPath, "RELEASE_PUBLISH=false\n");
-  let result = await runPrompt(project.dir, ["remove", "uat"], () => {
+  let result = await runPrompt(project.dir, [Command.REMOVE, "uat"], () => {
     writeFileSync(removedPath, "RELEASE_PUBLISH=false\nCUSTOM=edited\n");
   });
   assert.equal(result.status, 1, result.output);
   assert.match(result.output, /changed.*again/i);
-  assert.equal(project.read("production"), PRODUCTION + "RELEASE_AFTER=uat\n");
+  assert.equal(
+    project.read(ReservedEnvironment.PRODUCTION),
+    PRODUCTION + "RELEASE_AFTER=uat\n",
+  );
   assert.equal(project.read("uat"), "RELEASE_PUBLISH=false\nCUSTOM=edited\n");
 });
 
@@ -401,7 +449,9 @@ function hostFixture(
   let statePath = join(project.dir, "host.json");
   let callsPath = join(project.dir, "calls.jsonl");
   let state = {
-    environments: [{ id: 1, name: "production", state: "available" }],
+    environments: [
+      { id: 1, name: ReservedEnvironment.PRODUCTION, state: "available" },
+    ],
     variables: [],
     ...initial,
   };
@@ -466,7 +516,7 @@ fs.writeFileSync(statePath, JSON.stringify(state));
 `;
   for (let tool of [
     "git",
-    ...(initial.toolMissing ? [] : [ci === "github" ? "gh" : "glab"]),
+    ...(initial.toolMissing ? [] : [ci === Ci.GITHUB ? "gh" : "glab"]),
   ]) {
     writeFileSync(join(bin, tool), executable);
     chmodSync(join(bin, tool), 0o755);
@@ -484,23 +534,23 @@ fs.writeFileSync(statePath, JSON.stringify(state));
   };
 }
 
-for (let ci of ["github", "gitlab"]) {
+for (let ci of [Ci.GITHUB, Ci.GITLAB]) {
   test(`${ci}: creates the host environment, on-merge setting and list status`, (t) => {
     let project = hostFixture(t, ci);
-    let result = run(project.dir, "add", "dev", "--on-merge", "--yes");
+    let result = run(project.dir, Command.ADD, "dev", "--on-merge", "--yes");
     assert.equal(result.status, 0, result.output);
     assert.equal(
       project.read("dev"),
       "RELEASE_PUBLISH=false\nRELEASE_HEALTH_URL=\nRELEASE_ON_MERGE=true\n",
     );
-    assert.equal(project.read("production"), PRODUCTION);
+    assert.equal(project.read(ReservedEnvironment.PRODUCTION), PRODUCTION);
     assert.equal(project.host().environments.at(-1).name, "dev");
     assert.match(result.output, /Created host environment "dev"/);
     writeFileSync(
       join(project.environments, "uat.env"),
       "RELEASE_PUBLISH=false\n",
     );
-    let listing = run(project.dir, "list");
+    let listing = run(project.dir, Command.LIST);
     assert.equal(listing.status, 0, listing.output);
     assert.match(listing.output, /On merge\s+Host/);
     assert.match(
@@ -511,14 +561,14 @@ for (let ci of ["github", "gitlab"]) {
       listing.output,
       /uat\s+no\s+no\s+independent\s+unset\s+no\s+not yet created/,
     );
-    let removed = run(project.dir, "remove", "dev", "--yes");
+    let removed = run(project.dir, Command.REMOVE, "dev", "--yes");
     assert.equal(removed.status, 0, removed.output);
     assert.equal(existsSync(join(project.environments, "dev.env")), false);
     assert.deepEqual(
       project
         .host()
         .environments.map((environment: { name: string }) => environment.name),
-      ["production"],
+      [ReservedEnvironment.PRODUCTION],
     );
   });
 
@@ -526,7 +576,7 @@ for (let ci of ["github", "gitlab"]) {
     let project = hostFixture(t, ci, {
       environments: [{ id: 2, name: "dev", protection: "kept" }],
     });
-    let result = run(project.dir, "add", "dev", "--yes");
+    let result = run(project.dir, Command.ADD, "dev", "--yes");
     assert.equal(result.status, 0, result.output);
     assert.match(result.output, /Host environment "dev" already exists/);
     assert.deepEqual(project.host().environments, [
@@ -542,26 +592,27 @@ for (let ci of ["github", "gitlab"]) {
     );
   });
 
-  for (let failure of [
-    "toolMissing",
-    "signedOut",
-    "noRemote",
-    "refuseWrites",
-  ]) {
+  for (let failure of Object.values(HostFailure)) {
     test(`${ci}: ${failure} defers host creation and leaves local add successful`, (t) => {
       let project = hostFixture(t, ci, { [failure]: true });
-      let result = run(project.dir, "add", "dev", "--yes");
+      let result = run(project.dir, Command.ADD, "dev", "--yes");
       assert.equal(result.status, 0, result.output);
-      assert.equal(project.read("dev"), PRODUCTION.replace("true", "false"));
+      assert.equal(
+        project.read("dev"),
+        PRODUCTION.replace(ReleaseBoolean.TRUE, ReleaseBoolean.FALSE),
+      );
       assert.match(result.output, /first promotion will create it/);
       assert.doesNotMatch(result.output, /private-provider-error/);
-      if (failure !== "refuseWrites") {
-        assert.match(run(project.dir, "list").output, /production.*unknown/);
+      if (failure !== HostFailure.REFUSE_WRITES) {
+        assert.match(
+          run(project.dir, Command.LIST).output,
+          /production.*unknown/,
+        );
       }
-      let removed = run(project.dir, "remove", "dev", "--yes");
+      let removed = run(project.dir, Command.REMOVE, "dev", "--yes");
       assert.equal(removed.status, 0, removed.output);
       assert.equal(existsSync(join(project.environments, "dev.env")), false);
-      if (failure !== "refuseWrites")
+      if (failure !== HostFailure.REFUSE_WRITES)
         assert.match(removed.output, /host environment.*left in place/i);
     });
   }
@@ -587,13 +638,17 @@ for (let ci of ["github", "gitlab"]) {
       join(project.environments, "dev.env"),
       "RELEASE_PUBLISH=false\n",
     );
-    let result = await runPrompt(project.dir, ["remove", "dev"], () => {});
+    let result = await runPrompt(
+      project.dir,
+      [Command.REMOVE, "dev"],
+      () => {},
+    );
     assert.equal(result.status, 0, result.output);
     assert.match(result.output, /host-side secrets/);
     assert.doesNotMatch(result.output, /never-printed/);
     assert.equal(existsSync(join(project.environments, "dev.env")), false);
     assert.deepEqual(project.host().environments, []);
-    if (ci === "gitlab")
+    if (ci === Ci.GITLAB)
       assert.deepEqual(
         project
           .host()
@@ -613,7 +668,7 @@ for (let ci of ["github", "gitlab"]) {
     let before = project.host();
     let result = await runPrompt(
       project.dir,
-      ["remove", "dev"],
+      [Command.REMOVE, "dev"],
       () => {},
       false,
     );
@@ -630,7 +685,13 @@ for (let ci of ["github", "gitlab"]) {
       join(project.environments, "dev.env"),
       "RELEASE_PUBLISH=false\n",
     );
-    let result = run(project.dir, "remove", "dev", "--keep-host", "--yes");
+    let result = run(
+      project.dir,
+      Command.REMOVE,
+      "dev",
+      "--keep-host",
+      "--yes",
+    );
     assert.equal(result.status, 0, result.output);
     assert.equal(existsSync(join(project.environments, "dev.env")), false);
     assert.match(result.output, /host environment.*left in place/i);
@@ -643,7 +704,7 @@ for (let ci of ["github", "gitlab"]) {
       join(project.environments, "dev.env"),
       "RELEASE_PUBLISH=false\n",
     );
-    let result = run(project.dir, "remove", "dev");
+    let result = run(project.dir, Command.REMOVE, "dev");
     assert.equal(result.status, 1, result.output);
     assert.match(result.output, /--yes.*--keep-host/);
     assert.equal(project.read("dev"), "RELEASE_PUBLISH=false\n");
@@ -652,40 +713,40 @@ for (let ci of ["github", "gitlab"]) {
 }
 
 test("the interactive add offers deployment after a merge", async (t) => {
-  let project = hostFixture(t, "github");
-  let result = await runPrompt(project.dir, ["add", "dev"], () => {});
+  let project = hostFixture(t, Ci.GITHUB);
+  let result = await runPrompt(project.dir, [Command.ADD, "dev"], () => {});
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /Deploy automatically after a merge to main/);
   assert.match(project.read("dev"), /RELEASE_ON_MERGE=true/);
 });
 
 test("the interactive add asks whether to create versions, defaulting to no", async (t) => {
-  let project = hostFixture(t, "github");
-  let result = await runPrompt(project.dir, ["add", "dev"], () => {});
+  let project = hostFixture(t, Ci.GITHUB);
+  let result = await runPrompt(project.dir, [Command.ADD, "dev"], () => {});
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /Create a version when deployed here\?/);
   assert.match(project.read("dev"), /^RELEASE_PUBLISH=false$/m);
 });
 
 test("answering yes to the version question writes RELEASE_PUBLISH=true", async (t) => {
-  let project = hostFixture(t, "github");
+  let project = hostFixture(t, Ci.GITHUB);
   let result = await runPrompt(
     project.dir,
-    ["add", "uat"],
+    [Command.ADD, "uat"],
     () => {},
     false,
     "y\r",
   );
   assert.equal(result.status, 0, result.output);
   assert.equal(project.read("uat"), PRODUCTION);
-  assert.equal(project.read("production"), PRODUCTION);
+  assert.equal(project.read(ReservedEnvironment.PRODUCTION), PRODUCTION);
 });
 
 test("--publish preselects yes for the version question", async (t) => {
-  let project = hostFixture(t, "github");
+  let project = hostFixture(t, Ci.GITHUB);
   let result = await runPrompt(
     project.dir,
-    ["add", "uat", "--publish"],
+    [Command.ADD, "uat", "--publish"],
     () => {},
     false,
   );
@@ -696,41 +757,42 @@ test("--publish preselects yes for the version question", async (t) => {
 
 test("on-merge configuration is opt-in when production enables it", (t) => {
   let project = fixture(t, PRODUCTION + "RELEASE_ON_MERGE=true # retained\n");
-  let result = run(project.dir, "add", "dev", "--yes");
+  let result = run(project.dir, Command.ADD, "dev", "--yes");
   assert.equal(result.status, 0, result.output);
   assert.equal(
     project.read("dev"),
-    PRODUCTION.replace("true", "false") + "# retained\n",
+    PRODUCTION.replace(ReleaseBoolean.TRUE, ReleaseBoolean.FALSE) +
+      "# retained\n",
   );
   assert.equal(
-    project.read("production"),
+    project.read(ReservedEnvironment.PRODUCTION),
     PRODUCTION + "RELEASE_ON_MERGE=true # retained\n",
   );
 });
 
 test("invalid on-merge values and misplaced flags are refused before writes", (t) => {
   let project = fixture(t, PRODUCTION + "RELEASE_ON_MERGE=perhaps\n");
-  assert.equal(run(project.dir, "add", "dev", "--yes").status, 1);
+  assert.equal(run(project.dir, Command.ADD, "dev", "--yes").status, 1);
   assert.deepEqual(readdirSync(project.environments), ["production.env"]);
   writeFileSync(join(project.environments, "production.env"), PRODUCTION);
   for (let args of [
-    ["list", "--on-merge"],
-    ["list", "--keep-host"],
-    ["list", "--publish"],
-    ["add", "dev", "--keep-host", "--yes"],
-    ["remove", "dev", "--on-merge", "--yes"],
-    ["remove", "dev", "--publish", "--yes"],
+    [Command.LIST, "--on-merge"],
+    [Command.LIST, "--keep-host"],
+    [Command.LIST, "--publish"],
+    [Command.ADD, "dev", "--keep-host", "--yes"],
+    [Command.REMOVE, "dev", "--on-merge", "--yes"],
+    [Command.REMOVE, "dev", "--publish", "--yes"],
   ]) {
     assert.equal(run(project.dir, ...args).status, 1, args.join(" "));
   }
   assert.match(
-    run(project.dir, "remove", "dev", "--publish", "--yes").output,
+    run(project.dir, Command.REMOVE, "dev", "--publish", "--yes").output,
     /--publish is only valid with pimasi env add\./,
   );
 });
 
 test("GitLab reports a partial host removal without printing secret values", (t) => {
-  let project = hostFixture(t, "gitlab", {
+  let project = hostFixture(t, Ci.GITLAB, {
     environments: [{ id: 2, name: "dev", state: "available" }],
     variables: [
       { key: "TOKEN", value: "secret-never-printed", environment_scope: "dev" },
@@ -741,7 +803,7 @@ test("GitLab reports a partial host removal without printing secret values", (t)
     join(project.environments, "dev.env"),
     "RELEASE_PUBLISH=false\n",
   );
-  let result = run(project.dir, "remove", "dev", "--yes");
+  let result = run(project.dir, Command.REMOVE, "dev", "--yes");
   assert.equal(result.status, 0, result.output);
   assert.equal(existsSync(join(project.environments, "dev.env")), false);
   assert.match(result.output, /host environment.*left in place.*partly/i);
@@ -749,14 +811,14 @@ test("GitLab reports a partial host removal without printing secret values", (t)
 });
 
 test("GitLab removal force-stops an active environment before deletion", (t) => {
-  let project = hostFixture(t, "gitlab", {
+  let project = hostFixture(t, Ci.GITLAB, {
     environments: [{ id: 2, name: "dev", state: "available" }],
   });
   writeFileSync(
     join(project.environments, "dev.env"),
     "RELEASE_PUBLISH=false\n",
   );
-  let result = run(project.dir, "remove", "dev", "--yes");
+  let result = run(project.dir, Command.REMOVE, "dev", "--yes");
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /Deleted host environment "dev"/);
   let writes = project
@@ -798,7 +860,7 @@ test("GitLab removal requests each exact-scope variable only once", (t) => {
     { key: "TOKEN", environment_scope: "*" },
     { key: "UAT_TOKEN", environment_scope: "uat" },
   ];
-  let project = hostFixture(t, "gitlab", {
+  let project = hostFixture(t, Ci.GITLAB, {
     environments: [{ id: 2, name: "dev", state: "available" }],
     variables: [...retained, { key: "TOKEN", environment_scope: "dev" }],
   });
@@ -806,7 +868,7 @@ test("GitLab removal requests each exact-scope variable only once", (t) => {
     join(project.environments, "dev.env"),
     "RELEASE_PUBLISH=false\n",
   );
-  let result = run(project.dir, "remove", "dev", "--yes");
+  let result = run(project.dir, Command.REMOVE, "dev", "--yes");
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /Deleted host environment "dev"/);
   let deletes = project
@@ -849,7 +911,7 @@ function fakeGitLabRequest(dir: string, endpoint: string, method: string) {
 }
 
 test("fake GitLab rejects deletion of an active environment", (t) => {
-  let project = hostFixture(t, "gitlab", {
+  let project = hostFixture(t, Ci.GITLAB, {
     environments: [{ id: 2, name: "dev", state: "available" }],
   });
   let before = project.host();
@@ -861,7 +923,7 @@ test("fake GitLab rejects deletion of an active environment", (t) => {
 
 for (let method of ["GET", "PUT", "DELETE"]) {
   test(`fake GitLab refuses ${method} as a stop request`, (t) => {
-    let project = hostFixture(t, "gitlab", {
+    let project = hostFixture(t, Ci.GITLAB, {
       environments: [{ id: 2, name: "dev", state: "available" }],
     });
     let before = project.host();
@@ -874,7 +936,7 @@ for (let method of ["GET", "PUT", "DELETE"]) {
 
 for (let key of ["TOKEN", "UNKNOWN"]) {
   test(`fake GitLab refuses missing exact-scope variable ${key}`, (t) => {
-    let project = hostFixture(t, "gitlab", {
+    let project = hostFixture(t, Ci.GITLAB, {
       variables: [{ key: "TOKEN", environment_scope: "*" }],
     });
     let before = project.host();
@@ -889,18 +951,24 @@ for (let key of ["TOKEN", "UNKNOWN"]) {
   });
 }
 
-for (let ci of ["github", "gitlab"]) {
+for (let ci of [Ci.GITHUB, Ci.GITLAB]) {
   test(`${ci}: publishing environment removal preserves its host records`, (t) => {
     let project = hostFixture(t, ci, {
       environments: [{ id: 2, name: "dev", state: "available" }],
     });
     writeFileSync(join(project.environments, "dev.env"), PRODUCTION);
-    let refused = run(project.dir, "remove", "dev", "--yes");
+    let refused = run(project.dir, Command.REMOVE, "dev", "--yes");
     assert.equal(refused.status, 1, refused.output);
     assert.match(refused.output, /publishing environment.*--keep-host/i);
     assert.equal(project.read("dev"), PRODUCTION);
     assert.deepEqual(project.calls(), []);
-    let removed = run(project.dir, "remove", "dev", "--keep-host", "--yes");
+    let removed = run(
+      project.dir,
+      Command.REMOVE,
+      "dev",
+      "--keep-host",
+      "--yes",
+    );
     assert.equal(removed.status, 0, removed.output);
     assert.equal(existsSync(join(project.environments, "dev.env")), false);
     assert.deepEqual(project.host().environments, [
@@ -910,10 +978,10 @@ for (let ci of ["github", "gitlab"]) {
   });
 }
 
-for (let ci of ["github", "gitlab"]) {
+for (let ci of [Ci.GITHUB, Ci.GITLAB]) {
   test(`${ci}: env add reminds about RELEASE_TOKEN only for Maintainer-only GitHub releases, without host calls`, (t) => {
     let calls: unknown[] = [];
-    for (let setting of ["true", "false", "", null]) {
+    for (let setting of [ReleaseBoolean.TRUE, ReleaseBoolean.FALSE, "", null]) {
       let project = hostFixture(t, ci);
       if (setting !== null) {
         writeFileSync(
@@ -921,9 +989,9 @@ for (let ci of ["github", "gitlab"]) {
           `RELEASE_TIMEZONE=UTC\n${setting && `RELEASE_MAINTAINERS_ONLY=${setting}\n`}`,
         );
       }
-      let result = run(project.dir, "add", "uat", "--yes");
+      let result = run(project.dir, Command.ADD, "uat", "--yes");
       assert.equal(result.status, 0, result.output);
-      if (ci === "github" && setting === "true") {
+      if (ci === Ci.GITHUB && setting === ReleaseBoolean.TRUE) {
         assert.match(
           result.output,
           /Maintainer-only releases are on: add RELEASE_TOKEN as a secret on the uat environment in GitHub and allow deployments to it only from main; see "Maintainer-only releases" in RELEASE\.md\./,
@@ -937,7 +1005,7 @@ for (let ci of ["github", "gitlab"]) {
   });
 }
 
-for (let ci of ["github", "gitlab"]) {
+for (let ci of [Ci.GITHUB, Ci.GITLAB]) {
   test(`${ci}: env remove never prints the RELEASE_TOKEN reminder, even with Maintainer-only releases on`, (t) => {
     for (let keepHost of [[], ["--keep-host"]]) {
       let project = hostFixture(t, ci, {
@@ -951,15 +1019,21 @@ for (let ci of ["github", "gitlab"]) {
         join(project.environments, "dev.env"),
         "RELEASE_PUBLISH=false\n",
       );
-      let removed = run(project.dir, "remove", "dev", ...keepHost, "--yes");
+      let removed = run(
+        project.dir,
+        Command.REMOVE,
+        "dev",
+        ...keepHost,
+        "--yes",
+      );
       assert.equal(removed.status, 0, removed.output);
       assert.equal(existsSync(join(project.environments, "dev.env")), false);
       assert.doesNotMatch(removed.output, /RELEASE_TOKEN/);
-      let added = run(project.dir, "add", "dev", "--yes");
+      let added = run(project.dir, Command.ADD, "dev", "--yes");
       assert.equal(added.status, 0, added.output);
       assert.equal(
         /RELEASE_TOKEN/.test(added.output),
-        ci === "github",
+        ci === Ci.GITHUB,
         added.output,
       );
     }
