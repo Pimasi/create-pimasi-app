@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+[ "$#" -gt 0 ] || set -- ci
+exec env -i PATH="$PATH" HOME="${HOME:-}" TMPDIR="${TMPDIR:-/tmp}" \
+    DOCKER_HOST="${DOCKER_HOST:-}" DOCKER_CONTEXT="${DOCKER_CONTEXT:-}" \
+    DOCKER_TLS_CERTDIR="${DOCKER_TLS_CERTDIR:-}" DOCKER_TLS_VERIFY="${DOCKER_TLS_VERIFY:-}" \
+    DOCKER_CERT_PATH="${DOCKER_CERT_PATH:-}" DOCKER_API_VERSION="${DOCKER_API_VERSION:-}" \
+    RELEASE_TOOLS="${RELEASE_TOOLS:-scripts/release}" RELEASE_OUT="${RELEASE_OUT:-.release}" \
+    PR_TITLE="${PR_TITLE:-}" CI_MERGE_REQUEST_TITLE="${CI_MERGE_REQUEST_TITLE:-}" \
+    make "$@"

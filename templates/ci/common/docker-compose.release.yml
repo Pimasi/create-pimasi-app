@@ -1,0 +1,11 @@
+services:
+    pimasi-server:
+        image: "${RELEASE_DEPLOY_IMAGE_SERVER:?RELEASE_DEPLOY_IMAGE_SERVER is required}"
+        build: !reset null
+        command: !reset null
+        develop: !reset null
+        volumes: !reset []
+        ports: !reset []
+        environment:
+            PM2_INSTANCES: "1"
+            RATE_LIMIT_ENABLED: "true"

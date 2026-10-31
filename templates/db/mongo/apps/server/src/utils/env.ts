@@ -20,9 +20,12 @@ const FIREBASE_PRIVATE_KEY = process.env.FIREBASE_PRIVATE_KEY ?? "";
 
 export const $env = {
     NODE_ENV: validateNodeEnv(),
+    APP_VERSION: process.env.APP_VERSION ?? "0.0.0",
+    GIT_SHA: process.env.GIT_SHA ?? "unknown",
     PORT: Number(process.env.PORT ?? 3000),
     JWT_SECRET: getenv("JWT_SECRET"),
     REDIS_URL: process.env.REDIS_URL ?? "",
+    RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED !== "false",
     NOTIFICATION_URL: process.env.NOTIFICATION_URL,
     TEST_URL: process.env.TEST_URL,
 

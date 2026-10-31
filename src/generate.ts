@@ -21,6 +21,7 @@ export function writeManifest(
     frontend: selections.frontend,
     database: selections.database,
     design: selections.design,
+    ci: selections.ci,
     cordova: selections.cordova,
     workers: selections.workers,
     cache: selections.cache,
@@ -45,6 +46,7 @@ export function manifestToSelections(manifest: Manifest): Selections {
     frontend: manifest.frontend,
     database: manifest.database,
     design: manifest.design,
+    ci: manifest.ci ?? "none",
     cordova: manifest.cordova,
     workers: manifest.workers,
     cache: manifest.cache,
@@ -127,6 +129,8 @@ export function renderDockerCompose(selections: Selections): string {
   const dbServiceName =
     database === "mongo" ? `${slug}-mongo` : `${slug}-postgres`;
 
+  const postgresHealthcheck = `            test: ["CMD-SHELL", "pg_isready -U postgres -d ${dbName}"]`;
+
   const dbService =
     database === "mongo"
       ? [
@@ -166,7 +170,15 @@ export function renderDockerCompose(selections: Selections): string {
           `            POSTGRES_PASSWORD: secret`,
           `            POSTGRES_DB: ${dbName}`,
           `        healthcheck:`,
-          `            test: ["CMD-SHELL", "pg_isready -U postgres -d ${dbName}"]`,
+          ...(postgresHealthcheck.length <= 80
+            ? [postgresHealthcheck]
+            : [
+                `            test:`,
+                `                [`,
+                `                    "CMD-SHELL",`,
+                `                    "pg_isready -U postgres -d ${dbName}",`,
+                `                ]`,
+              ]),
           `            interval: 5s`,
           `            timeout: 5s`,
           `            retries: 10`,
@@ -276,8 +288,7 @@ export function renderDockerCompose(selections: Selections): string {
   const blocks = [
     serverAnchor,
     webAnchor,
-    `services:`,
-    dbService,
+    `services:\n${dbService}`,
     ...(withRedis ? [redisService] : []),
     serverService,
     webService,
@@ -357,6 +368,7 @@ export function renderStackBlock(selections: Selections): string {
     cache,
     rateLimit,
     websockets,
+    ci,
   } = selections;
 
   return [
@@ -372,6 +384,9 @@ export function renderStackBlock(selections: Selections): string {
     `- **Rate limiting**: ${rateLimit ? "Redis-backed (auth routes)" : "not enabled"}`,
     `- **WebSockets**: ${websockets ? "realtime push over the Redis-backed $bus" : "not enabled"}`,
     `- **Mobile**: ${cordova ? "Cordova (Android/iOS)" : "not enabled"}`,
+    ...(ci === "none"
+      ? []
+      : [`- **CI and releases**: ${ci === "github" ? "GitHub" : "GitLab"}`]),
     ``,
   ].join("\n");
 }
@@ -391,6 +406,6 @@ export function injectStackBlock(
     return;
   }
 
-  lines.splice(insertAt + 1, 0, block);
+  lines.splice(insertAt + 1, 0, block.trimEnd());
   writeFileSync(readmePath, lines.join("\n"));
 }

@@ -1,0 +1,3 @@
+services:
+    pimasi-postgres:
+        ports: !reset []

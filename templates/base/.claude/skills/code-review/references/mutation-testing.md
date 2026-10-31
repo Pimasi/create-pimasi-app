@@ -28,8 +28,7 @@ Process one module completely before starting the next:
 2. Make a throwaway copy that can run the focused tests (the package, not
    one file). Never mutate the reviewed tree or anything the running stack
    loads.
-3. Run the project's mutation tool scoped to those files, workers capped at
-   3. With no tool installed, do not add one during a review: hand-apply
+3. Run the project's mutation tool scoped to those files, workers capped at 3. With no tool installed, do not add one during a review: hand-apply
    mutants one at a time (flip a comparison, drop a call, invert a
    condition), at most ten per module. Mutate first every behavior whose
    existing test the diff modified, re-pointed or deleted, and the code

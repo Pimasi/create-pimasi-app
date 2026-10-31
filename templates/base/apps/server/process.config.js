@@ -30,7 +30,7 @@ const prodApp = (name, script) => ({
     name,
     script,
     exec_mode: "cluster",
-    instances: "max",
+    instances: process.env.PM2_INSTANCES || 1,
     kill_timeout: 2500,
     ...LOG_CONFIG,
 });

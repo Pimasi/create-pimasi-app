@@ -1,6 +1,7 @@
 export type Frontend = "tanstack" | "nextjs";
 export type Database = "mongo" | "postgres";
 export type Design = "shadcn" | "bespoke";
+export type Ci = "github" | "gitlab" | "none";
 
 export const SERVER_AXES = [
   "workers",
@@ -15,6 +16,7 @@ export interface Selections {
   frontend: Frontend;
   database: Database;
   design: Design;
+  ci: Ci;
   cordova: boolean;
   workers: boolean;
   cache: boolean;
@@ -28,6 +30,7 @@ export interface Manifest {
   frontend: Frontend;
   database: Database;
   design: Design;
+  ci?: Ci;
   cordova: boolean;
   workers: boolean;
   cache: boolean;

@@ -99,7 +99,10 @@ async function users() {
         },
         async insertMany(list: UserModel[]): Promise<void> {
             if (list.length === 0) return;
-            await conn.insertInto("users").values(list.map(userValues)).execute();
+            await conn
+                .insertInto("users")
+                .values(list.map(userValues))
+                .execute();
         },
         async deleteMany(filter: { id: { $in: string[] } }): Promise<void> {
             let ids = filter.id.$in;

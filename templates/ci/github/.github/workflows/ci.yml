@@ -1,0 +1,81 @@
+name: "CI"
+
+on:
+    pull_request:
+        types: [opened, synchronize, reopened, edited]
+    push:
+        branches: [main]
+
+permissions:
+    contents: read
+
+jobs:
+    gate:
+        runs-on: ubuntu-latest
+        outputs:
+            deploy: ${{ steps.environments.outputs.deploy }}
+            publish: ${{ steps.environments.outputs.publish }}
+            sha: ${{ steps.environments.outputs.sha }}
+            pipeline_id: ${{ steps.environments.outputs.pipeline_id }}
+        permissions:
+            contents: read
+            deployments: read
+        env:
+            GITHUB_TOKEN: ${{ github.token }}
+            PR_TITLE: ${{ github.event.pull_request.title }}
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0
+            - run: sh scripts/release/clean-gate.sh
+            - run: make release-preview-if-main
+            - if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              id: environments
+              run: |
+                  targets=$(sh scripts/release/on-merge-environments.sh)
+                  {
+                      printf 'deploy=%s\n' "$(printf '%s' "$targets" | jq -c 'map(select(.publish == false))')"
+                      printf 'publish=%s\n' "$(printf '%s' "$targets" | jq -c 'map(select(.publish == true))')"
+                      printf 'sha=%s\n' "$GITHUB_SHA"
+                      printf 'pipeline_id=%s\n' "$GITHUB_RUN_ID"
+                  } >> "$GITHUB_OUTPUT"
+    deploy-on-merge:
+        needs: gate
+        if: needs.gate.outputs.deploy != '' && needs.gate.outputs.deploy != '[]'
+        strategy:
+            fail-fast: false
+            matrix:
+                include: ${{ fromJSON(needs.gate.outputs.deploy) }}
+        permissions:
+            contents: write
+            deployments: write
+            packages: write
+            id-token: write
+        uses: ./.github/workflows/promote.yml
+        with:
+            sha: ${{ needs.gate.outputs.sha }}
+            environment: ${{ matrix.environment }}
+            publish: false
+            gated_sha: ${{ needs.gate.outputs.sha }}
+            gated_pipeline_id: ${{ needs.gate.outputs.pipeline_id }}
+        secrets: inherit
+    publish-on-merge:
+        needs: gate
+        if: needs.gate.outputs.publish != '' && needs.gate.outputs.publish != '[]'
+        strategy:
+            fail-fast: false
+            matrix:
+                include: ${{ fromJSON(needs.gate.outputs.publish) }}
+        permissions:
+            contents: write
+            deployments: write
+            packages: write
+            id-token: write
+        uses: ./.github/workflows/promote.yml
+        with:
+            sha: ${{ needs.gate.outputs.sha }}
+            environment: ${{ matrix.environment }}
+            publish: true
+            gated_sha: ${{ needs.gate.outputs.sha }}
+            gated_pipeline_id: ${{ needs.gate.outputs.pipeline_id }}
+        secrets: inherit

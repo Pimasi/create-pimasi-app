@@ -83,6 +83,15 @@ export function applyReplacements(
   return out;
 }
 
+export const RELEASE_CONFIG = "scripts/release/config.sh";
+
+export function setMaintainersOnly(content: string, value: boolean): string {
+  return content.replace(
+    /^RELEASE_MAINTAINERS_ONLY=.*$/m,
+    `RELEASE_MAINTAINERS_ONLY=${value}`,
+  );
+}
+
 export function deepMerge(base: JsonRecord, partial: JsonRecord): JsonRecord {
   const out: JsonRecord = { ...base };
 
@@ -167,6 +176,10 @@ export function compose(
   );
   if (selections.cordova) {
     copyDir(join(templatesDir, "cordova", selections.frontend), targetDir);
+  }
+  if (selections.ci !== "none") {
+    copyDir(join(templatesDir, "ci", "common"), targetDir);
+    copyDir(join(templatesDir, "ci", selections.ci), targetDir);
   }
 }
 

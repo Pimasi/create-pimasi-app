@@ -1,0 +1,124 @@
+spec:
+    inputs:
+        sha:
+            description: "Full 40-character main or hotfix commit to promote"
+            default: ""
+        environment:
+            description: "Environment to promote to"
+            default: "production"
+            regex: "^[a-z0-9-]+$"
+        on_merge:
+            type: boolean
+            default: false
+        button:
+            type: boolean
+            default: false
+        publish:
+            type: boolean
+            default: false
+        pipeline_sha:
+            default: ""
+        pipeline_id:
+            default: ""
+        gated_sha:
+            default: ""
+        gated_pipeline_id:
+            default: ""
+        release_runner_tags:
+            type: array
+            default: []
+---
+default:
+    image: docker:29-cli
+    services:
+        - docker:29-dind
+    before_script:
+        - apk add --no-cache make curl jq git tzdata
+
+variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    FF_NETWORK_PER_BUILD: "true"
+    GIT_DEPTH: "0"
+    RELEASE_ENV: $[[ inputs.environment ]]
+    RELEASE_SHA: $[[ inputs.sha ]]
+    RELEASE_PIPELINE_SHA: $[[ inputs.pipeline_sha ]]
+    RELEASE_PIPELINE_ID: $[[ inputs.pipeline_id ]]
+    RELEASE_GATED_SHA: $[[ inputs.gated_sha ]]
+    RELEASE_GATED_PIPELINE_ID: $[[ inputs.gated_pipeline_id ]]
+
+workflow:
+    rules:
+        - if: $CI_COMMIT_TAG
+          when: never
+        - if: $CI_COMMIT_BRANCH =~ /^env\//
+          when: never
+        - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+        - if: $CI_COMMIT_BRANCH == "main"
+        - if: $CI_COMMIT_BRANCH =~ /^release\//
+
+gate:
+    rules:
+        - if: $RELEASE_SHA == ""
+    script:
+        - sh scripts/release/clean-gate.sh
+        - make release-preview-if-main
+        - sh scripts/release/dispatch-on-merge.sh
+
+prepare-release:
+    tags: $[[ inputs.release_runner_tags ]]
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" && $RELEASE_SHA != ""
+    script:
+        - mkdir -p .release
+        - RELEASE_ON_MERGE_INPUT=$[[ inputs.on_merge ]] RELEASE_PLAN_PUBLISH=$[[ inputs.publish ]] RELEASE_BUTTON_INPUT=$[[ inputs.button ]] sh scripts/release/gitlab-plan.sh > .release/promotion.yml
+    artifacts:
+        paths:
+            - .release/promotion.yml
+
+prepare-buttons:
+    rules:
+        - if: $RELEASE_SHA == "" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
+        - if: $RELEASE_SHA == "" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^release\//
+    script:
+        - mkdir -p .release
+        - git fetch --quiet origin "+refs/heads/main:refs/remotes/origin/main"
+        - tooling=$(mktemp -d)
+        - git archive origin/main scripts/release | tar -x -C "$tooling"
+        - sh "$tooling/scripts/release/gitlab-buttons.sh" > .release/buttons.yml
+    artifacts:
+        paths:
+            - .release/buttons.yml
+
+buttons:
+    stage: deploy
+    needs:
+        - prepare-buttons
+    rules:
+        - if: $RELEASE_SHA == "" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
+        - if: $RELEASE_SHA == "" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH =~ /^release\//
+    trigger:
+        include:
+            - artifact: .release/buttons.yml
+              job: prepare-buttons
+        forward:
+            yaml_variables: false
+            pipeline_variables: false
+
+release:
+    stage: deploy
+    rules:
+        - if: $CI_COMMIT_BRANCH == "main" && $RELEASE_SHA != ""
+    resource_group: release-$RELEASE_ENV
+    inherit:
+        variables: false
+    variables:
+        RELEASE_ENV: $[[ inputs.environment ]]
+        RELEASE_SHA: $[[ inputs.sha ]]
+    trigger:
+        include:
+            - artifact: .release/promotion.yml
+              job: prepare-release
+        strategy: mirror
+        forward:
+            yaml_variables: false
+            pipeline_variables: false

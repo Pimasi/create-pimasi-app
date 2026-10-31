@@ -22,8 +22,15 @@ import {
   text,
 } from "@clack/prompts";
 import pc from "picocolors";
-import { runAdd } from "./add.js";
-import { buildReplacements, compose, replacePlaceholders } from "./compose.js";
+import { ADD_FEATURES, runAdd, type AddFeature } from "./add.js";
+import {
+  buildReplacements,
+  compose,
+  RELEASE_CONFIG,
+  replacePlaceholders,
+  setMaintainersOnly,
+} from "./compose.js";
+import { runEnv } from "./env.js";
 import {
   injectStackBlock,
   MANIFEST_FILENAME,
@@ -33,18 +40,18 @@ import {
 } from "./generate.js";
 import { findTemplatesDir, getCliVersion } from "./templates.js";
 import {
-  SERVER_AXES,
+  type Ci,
   type Database,
   type Design,
   type Frontend,
   type Selections,
-  type ServerAxis,
 } from "./types.js";
 
 const DEFAULT_NAME = "my-pimasi-app";
 const FRONTENDS = ["tanstack", "nextjs"] as const;
 const DATABASES = ["mongo", "postgres"] as const;
 const DESIGNS = ["shadcn", "bespoke"] as const;
+const CI_HOSTS = ["github", "gitlab", "none"] as const;
 const KEBAB_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function validateName(value: string | undefined): string | undefined {
@@ -65,6 +72,10 @@ function isDatabase(value: string): value is Database {
 
 function isDesign(value: string): value is Design {
   return (DESIGNS as readonly string[]).includes(value);
+}
+
+function isCi(value: string): value is Ci {
+  return (CI_HOSTS as readonly string[]).includes(value);
 }
 
 function ensureNotCancelled(value: unknown): void {
@@ -98,9 +109,14 @@ function printHelp(): void {
       `Usage:`,
       `  npm create pimasi-app@latest -- [name] [options]`,
       `  npx create-pimasi-app [name] [options]`,
-      `  npx pimasi add [feature…]     Add server features to an existing`,
+      `  npx pimasi add [feature…]     Add features to an existing`,
       `                                project (reads pimasi.json; features:`,
-      `                                ${SERVER_AXES.join(", ")})`,
+      `                                ${ADD_FEATURES.join(", ")})`,
+      `  npx pimasi env list           List project environments`,
+      `  npx pimasi env add <name>     Create an independent environment`,
+      `    [--after <environment> | --before <environment>] [--on-merge]`,
+      `    [--publish] [--yes]`,
+      `  npx pimasi env remove <name> [--keep-host] [--yes]`,
       ``,
       `Options:`,
       `  --name <slug>                 App name (kebab-case; becomes the package`,
@@ -109,6 +125,10 @@ function printHelp(): void {
       `  --frontend <tanstack|nextjs>  Frontend framework`,
       `  --db <mongo|postgres>         Database (postgres uses Kysely)`,
       `  --design <shadcn|bespoke>     Design system for apps/web`,
+      `  --ci <github|gitlab|none>     CI and releases (default none)`,
+      `  --maintainers-only / --no-maintainers-only`,
+      `                                Only Maintainers can release (github or`,
+      `                                gitlab; default on; also add ci-<host>)`,
       `  --cordova / --no-cordova      Toggle Cordova mobile packaging`,
       `  --workers / --no-workers      Toggle BullMQ background workers + queues`,
       `  --cache / --no-cache          Toggle the Redis-backed $cache service`,
@@ -119,6 +139,7 @@ function printHelp(): void {
       `  --no-install                  Skip npm install`,
       `  --no-git                      Skip git init`,
       `  --force                       Allow a non-empty target directory`,
+      `  --refresh                     Refresh the installed CI host (add only)`,
       `  --help, -h                    Show this help`,
     ].join("\n"),
   );
@@ -142,15 +163,26 @@ function finaliseRootPackage(
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + "\n");
 }
 
-function isServerAxis(value: string): value is ServerAxis {
-  return (SERVER_AXES as readonly string[]).includes(value);
+function isAddFeature(value: string): value is AddFeature {
+  return (ADD_FEATURES as readonly string[]).includes(value);
 }
 
 function tryGitInit(targetDir: string): void {
   try {
-    execFileSync("git", ["init"], { cwd: targetDir, stdio: "ignore" });
+    execFileSync("git", ["init", "-b", "main"], {
+      cwd: targetDir,
+      stdio: "ignore",
+    });
   } catch {
-    log.warn("git init skipped (git not available).");
+    try {
+      execFileSync("git", ["init"], { cwd: targetDir, stdio: "ignore" });
+      execFileSync("git", ["symbolic-ref", "HEAD", "refs/heads/main"], {
+        cwd: targetDir,
+        stdio: "ignore",
+      });
+    } catch {
+      log.warn("git init skipped (git not available).");
+    }
   }
 }
 
@@ -169,6 +201,11 @@ function displayPath(targetDir: string): string {
 }
 
 async function main(): Promise<void> {
+  if (process.argv[2] === "env") {
+    await runEnv(process.argv.slice(3), process.cwd());
+    return;
+  }
+
   const parsed = (() => {
     try {
       return parseArgs({
@@ -180,6 +217,7 @@ async function main(): Promise<void> {
           frontend: { type: "string" },
           db: { type: "string" },
           design: { type: "string" },
+          ci: { type: "string" },
           dir: { type: "string" },
           cordova: { type: "boolean" },
           "no-cordova": { type: "boolean" },
@@ -191,10 +229,13 @@ async function main(): Promise<void> {
           "no-rate-limit": { type: "boolean" },
           websockets: { type: "boolean" },
           "no-websockets": { type: "boolean" },
+          "maintainers-only": { type: "boolean" },
+          "no-maintainers-only": { type: "boolean" },
           "no-install": { type: "boolean" },
           "no-git": { type: "boolean" },
           yes: { type: "boolean", short: "y" },
           force: { type: "boolean" },
+          refresh: { type: "boolean" },
           help: { type: "boolean", short: "h" },
         },
       });
@@ -213,6 +254,11 @@ async function main(): Promise<void> {
   }
 
   const isYes = Boolean(values.yes);
+  const maintainersOnlyFlag = values["maintainers-only"]
+    ? true
+    : values["no-maintainers-only"]
+      ? false
+      : undefined;
 
   const wantsAdd =
     positionals[0] === "add" ||
@@ -227,6 +273,7 @@ async function main(): Promise<void> {
       "frontend",
       "db",
       "design",
+      "ci",
       "dir",
       "cordova",
       "no-cordova",
@@ -242,17 +289,17 @@ async function main(): Promise<void> {
     ].filter((key) => (values as Record<string, unknown>)[key] !== undefined);
     if (scaffoldOnly.length > 0) {
       console.error(
-        `--${scaffoldOnly[0]} is not valid with add — name features as arguments: pimasi add ${SERVER_AXES.join(" ")}`,
+        `--${scaffoldOnly[0]} is not valid with add — name features as arguments: pimasi add ${ADD_FEATURES.join(" ")}`,
       );
       process.exit(1);
     }
 
     const rawAxes = positionals[0] === "add" ? positionals.slice(1) : [];
-    const axes: ServerAxis[] = [];
+    const axes: AddFeature[] = [];
     for (const raw of rawAxes) {
-      if (!isServerAxis(raw)) {
+      if (!isAddFeature(raw)) {
         console.error(
-          `Unknown feature "${raw}" — valid features: ${SERVER_AXES.join(", ")}`,
+          `Unknown feature "${raw}" — valid features: ${ADD_FEATURES.join(", ")}`,
         );
         process.exit(1);
       }
@@ -263,11 +310,15 @@ async function main(): Promise<void> {
       axes,
       yes: isYes,
       force: Boolean(values.force),
+      refresh: Boolean(values.refresh),
       install: !values["no-install"],
       projectDir: process.cwd(),
+      maintainersOnly: maintainersOnlyFlag,
     });
     return;
   }
+
+  if (values.refresh) fail("--refresh is only valid with add ci-<host>.");
 
   intro(pc.inverse(pc.cyan(" create-pimasi-app ")));
 
@@ -471,6 +522,50 @@ async function main(): Promise<void> {
     },
   );
 
+  if (values.ci !== undefined && !isCi(values.ci)) {
+    fail(`Invalid --ci "${values.ci}" (use github|gitlab|none).`);
+  }
+  const ci = await resolveOption<Ci>(
+    values.ci as Ci | undefined,
+    isYes,
+    "none",
+    async () => {
+      const answer = await select({
+        message: "CI and releases",
+        options: [
+          { value: "github", label: "GitHub" },
+          { value: "gitlab", label: "GitLab" },
+          { value: "none", label: "None" },
+        ],
+        initialValue: "none",
+      });
+      ensureNotCancelled(answer);
+      return answer as Ci;
+    },
+  );
+
+  if (ci === "none" && maintainersOnlyFlag !== undefined) {
+    fail(
+      "--maintainers-only and --no-maintainers-only need --ci github or --ci gitlab.",
+    );
+  }
+  const maintainersOnly =
+    ci === "none"
+      ? false
+      : await resolveOption<boolean>(
+          maintainersOnlyFlag,
+          isYes,
+          true,
+          async () => {
+            const answer = await confirm({
+              message: "Only Maintainers can release?",
+              initialValue: true,
+            });
+            ensureNotCancelled(answer);
+            return answer as boolean;
+          },
+        );
+
   const defaultDir = `./${slug}`;
   const targetInput = await resolveOption<string>(
     values.dir,
@@ -506,6 +601,7 @@ async function main(): Promise<void> {
     frontend,
     database,
     design,
+    ci,
     cordova,
     workers,
     cache,
@@ -518,6 +614,13 @@ async function main(): Promise<void> {
   s.start("Composing project");
   mkdirSync(targetDir, { recursive: true });
   compose(templatesDir, targetDir, selections);
+  if (ci !== "none") {
+    const releaseConfig = join(targetDir, RELEASE_CONFIG);
+    writeFileSync(
+      releaseConfig,
+      setMaintainersOnly(readFileSync(releaseConfig, "utf8"), maintainersOnly),
+    );
+  }
   writeFileSync(
     join(targetDir, "docker-compose.yml"),
     renderDockerCompose(selections),
@@ -535,6 +638,7 @@ async function main(): Promise<void> {
   if (cache) stackParts.push("cache");
   if (rateLimit) stackParts.push("rate-limit");
   if (websockets) stackParts.push("websockets");
+  if (ci !== "none") stackParts.push(ci);
   s.stop(`Composed ${pc.bold(slug)} (${stackParts.join(" + ")})`);
   log.info(
     `Packages: ${pc.bold(`@${slug}/lib`)}, ${pc.bold(`${slug}-server`)}, ${pc.bold(`${slug}-web`)}`,
