@@ -10,6 +10,7 @@ import { ERROR_HANDLER_MIDDLEWARE } from "./middleware/error-handler";
 import { PARSE_SESSION_MIDDLEWARE } from "./handlers/auth/parse-session.middleware";
 import { runMigrations } from "./migrations";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createServer } from "node:http";
 import { globSync } from "fs";
 import cors from "cors";
@@ -36,18 +37,20 @@ $session.run({}, async () => {
             },
         },
         preRouteMiddleware,
-        routes: resolve(__dirname, "./**/*.route.{ts,js}"),
+        routes: resolve(import.meta.dirname, "./**/*.route.{ts,js}"),
         postRouteMiddleware: [ERROR_HANDLER_MIDDLEWARE],
     });
 
     let server = createServer(app);
 
-    let bootFiles = globSync(resolve(__dirname, "./**/*.boot.{ts,js}"));
+    let bootFiles = globSync(
+        resolve(import.meta.dirname, "./**/*.boot.{ts,js}"),
+    );
 
     let boots: Boot[] = [];
-    bootFiles.forEach((fileName) => {
+    for (let fileName of bootFiles) {
         try {
-            let module = require(fileName);
+            let module = await import(pathToFileURL(fileName).href);
 
             Object.entries(module).forEach(([name, boot]) => {
                 if (Boot.isBoot(boot)) {
@@ -57,7 +60,7 @@ $session.run({}, async () => {
         } catch (err: any) {
             $logger.warn({ fileName, err }, `Failed to load boot file`);
         }
-    });
+    }
 
     for (let boot of boots) {
         await boot.handler({ app, httpServer: server, isProduction });

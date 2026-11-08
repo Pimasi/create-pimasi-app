@@ -26,6 +26,18 @@ rules live in [AGENTS.md](AGENTS.md). When CI and releases are enabled,
 - All variables inside a function that are **not** module-level must use `let`, not `const`.
 - All module-level declarations must use `const`.
 
+### Modules
+
+The server and shared lib are ES modules. Relative imports omit file extensions.
+tsx runs TypeScript source in development, for `run`, and for scripts
+(`npx tsx path/to/script.ts`). `npm run build` type-checks and compiles the
+server and shared lib to `apps/server/dist/`, which production runs with plain
+Node under PM2.
+
+Use `import.meta.dirname` and `await import()`, never `__dirname`, `require`
+or `module.exports`. Import CommonJS packages without detectable named
+exports, such as lodash, through their default export.
+
 ### Tooling — TypeScript + Prettier, never ESLint
 
 **All source is TypeScript** — no `.js`/`.jsx` app code. The correctness gate is the compiler (`make type-check`); the style gate is Prettier (`make format`, enforced by the pre-commit hook). **Never add ESLint** — no configs, no plugins, no `eslint-*` dependencies, in any workspace. If a rule feels missing, it belongs in the type system or in this guide, not in a linter.

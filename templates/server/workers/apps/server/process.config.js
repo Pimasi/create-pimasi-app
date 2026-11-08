@@ -22,7 +22,7 @@ const LOG_CONFIG = {
 // per process, so backend and workers reload independently and PM2's restart
 // path — the thing that crashed — is never touched. `--watch-path=./src` is a
 // recursive *directory* watch (not the module graph): routes and queues are
-// autoloaded via globSync+require, so a brand-new *.route.ts / *.queue.ts must
+// autoloaded via globSync+import(), so a brand-new *.route.ts / *.queue.ts must
 // trigger a reload even though nothing imports it yet. (Plain `tsx watch` only
 // watches its module graph and would silently miss new autoloaded files; that's
 // why we use Node's watcher with tsx as the loader.) `tsc-watch` stays purely
@@ -45,15 +45,13 @@ const prodApp = (name, script) => ({
     ...LOG_CONFIG,
 });
 
-module.exports = {
-    apps: [
-        DEV_MODE && {
-            name: "tsc-watch",
-            script: "npm",
-            args: ["run", "build:watch"],
-            ...LOG_CONFIG,
-        },
-        DEV_MODE ? devApp("backend") : prodApp("backend", "dist/backend.js"),
-        DEV_MODE ? devApp("workers") : prodApp("workers", "dist/workers.js"),
-    ].filter(Boolean),
-};
+export const apps = [
+    DEV_MODE && {
+        name: "tsc-watch",
+        script: "npm",
+        args: ["run", "build:watch"],
+        ...LOG_CONFIG,
+    },
+    DEV_MODE ? devApp("backend") : prodApp("backend", "dist/backend.js"),
+    DEV_MODE ? devApp("workers") : prodApp("workers", "dist/workers.js"),
+].filter(Boolean);

@@ -1,0 +1,26 @@
+{
+    "name": "@pimasi/lib",
+    "version": "0.1.0",
+    "private": true,
+    "exports": {
+        "./schemas/*": {
+            "types": "./src/schemas/*.ts",
+            "import": "./src/schemas/*.ts",
+            "require": "./dist/schemas/*.js"
+        },
+        "./values/*": {
+            "types": "./src/values/*.ts",
+            "import": "./src/values/*.ts",
+            "require": "./dist/values/*.js"
+        }
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "type-check": "tsc -p tsconfig.json --noEmit",
+        "build:watch": "tsc -p tsconfig.json --watch"
+    },
+    "dependencies": {
+        "@pimasi/utils": "^1.1.0",
+        "typescript": "^7.0.2"
+    }
+}

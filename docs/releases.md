@@ -37,7 +37,7 @@ templates/ci/gitlab/                        .gitlab-ci.yml, .gitlab/promote.yml,
                                             dispatch-on-merge.sh, gitlab-buttons.sh, dispatch-button.sh
 src/                                        the --ci axis and Maintainer-only question (index.ts),
                                             add ci-<host> (add.ts), pimasi env add|list|remove (env.ts)
-templates/legacy/0.2.0/                     snapshots that let apps made with 0.2.0 adopt CI
+templates/legacy/{0.2.0,0.3.0,0.3.1}/       published snapshots for CI adoption and worker migration
 ```
 
 ## 2. How a release works

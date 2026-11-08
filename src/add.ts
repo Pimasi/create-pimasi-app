@@ -7,6 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import {
   cancel,
   confirm,
@@ -19,7 +20,12 @@ import {
   spinner,
 } from "@clack/prompts";
 import pc from "picocolors";
-import { format, type Options as PrettierOptions } from "prettier";
+import {
+  format,
+  type Options as PrettierOptions,
+  type ParserOptions,
+} from "prettier";
+import { parsers } from "prettier/plugins/typescript";
 import {
   applyReplacements,
   BINARY_EXTENSIONS,
@@ -47,9 +53,26 @@ import {
   Ci,
   Frontend,
   SERVER_AXES,
+  wireValues,
   type Selections,
   type ServerAxis,
 } from "./types.js";
+
+enum PackageModuleType {
+  COMMONJS = "commonjs",
+  MODULE = "module",
+}
+wireValues(PackageModuleType, ["commonjs", "module"]);
+
+enum PackageMigrationKey {
+  TYPE = "type",
+  EXPORTS = "exports",
+  BUILD = "scripts.build",
+  TYPE_CHECK = "scripts.type-check",
+  BUILD_CLEAN = "scripts.build:clean",
+  BUILD_WATCH = "scripts.build:watch",
+  ROLLDOWN = "dependencies.rolldown",
+}
 
 enum ReadinessValue {
   READY = "ready",
@@ -59,6 +82,17 @@ enum ReadinessValue {
 }
 
 enum PrerequisiteFile {
+  SERVER_PACKAGE_JSON = "apps/server/package.json",
+  SHARED_PACKAGE_JSON = "apps/shared/lib/package.json",
+  SERVER_CLI_ERROR_CODE_TS = "apps/server/src/cli-error-code.ts",
+  SERVER_APP_SWAGGER_TS = "apps/server/src/app/swagger.ts",
+  SERVER_APP_HTTP_SERVER_TS = "apps/server/src/app/http-server.ts",
+  SERVER_BACKEND_TS = "apps/server/src/backend.ts",
+  SERVER_CLI_TS = "apps/server/src/cli.ts",
+  SERVER_TSCONFIG_JSON = "apps/server/tsconfig.json",
+  SERVER_TSCONFIG_BUILD_JSON = "apps/server/tsconfig.build.json",
+  SERVER_ROLLDOWN_CONFIG_TS = "apps/server/rolldown.config.ts",
+  SHARED_TSCONFIG_JSON = "apps/shared/lib/tsconfig.json",
   SHARED_VALUES_WIRE_TS = "apps/shared/lib/src/values/wire.ts",
   SHARED_VALUES_HEALTH_TS = "apps/shared/lib/src/values/health.ts",
   SERVER_APP_ROUTE_VALUES_TS = "apps/server/src/app/route-values.ts",
@@ -255,6 +289,7 @@ async function upgradePrerequisite(
   description: string,
   ctx: ApplyContext,
   formattingOnly = false,
+  satisfied?: (content: string) => boolean | Promise<boolean>,
 ): Promise<void> {
   const dstRel = join(dirname(relPath), targetName(basename(relPath)));
   const dstPath = join(ctx.projectDir, dstRel);
@@ -263,7 +298,9 @@ async function upgradePrerequisite(
   if (
     !formattingOnly &&
     onDisk !== null &&
-    prerequisiteSatisfied(relPath, onDisk, ctx.selections.rateLimit)
+    (satisfied
+      ? await satisfied(onDisk)
+      : prerequisiteSatisfied(relPath, onDisk, ctx.selections.rateLimit))
   ) {
     return;
   }
@@ -485,6 +522,432 @@ function restoreIgnoreFiles(
     `Restored ignore files before checking the working tree: ${restored.join(", ")}.`,
   );
   return restored;
+}
+
+enum TypeScriptNodeType {
+  IDENTIFIER = "Identifier",
+  MEMBER_EXPRESSION = "MemberExpression",
+  ASSIGNMENT_PATTERN = "AssignmentPattern",
+  IMPORT_DECLARATION = "ImportDeclaration",
+  IMPORT_SPECIFIER = "ImportSpecifier",
+  EXPORT_NAMED_DECLARATION = "ExportNamedDeclaration",
+  TS_ENUM_DECLARATION = "TSEnumDeclaration",
+}
+
+enum CommonJsName {
+  DIRNAME = "__dirname",
+  FILENAME = "__filename",
+  REQUIRE = "require",
+  MODULE = "module",
+  EXPORTS = "exports",
+}
+
+enum EsmEnumName {
+  CLI_ERROR_CODE = "CliErrorCode",
+  SWAGGER_SECURITY_TYPE = "SwaggerSecurityType",
+}
+
+enum CliErrorCodeMember {
+  DUPLICATED_COMMAND = "DUPLICATED_COMMAND",
+}
+
+enum ModuleResolution {
+  BUNDLER = "bundler",
+}
+
+interface TypeScriptNode {
+  type: TypeScriptNodeType;
+  loc: { start: { line: number } };
+  [key: string]: unknown;
+}
+
+interface TypeScriptAnalysis {
+  commonJsLines: number[];
+  exportedEnums: Map<string, Set<string>>;
+  namedLodashImportLines: number[];
+}
+
+function isTypeScriptNode(value: unknown): value is TypeScriptNode {
+  return isPlainObject(value) && typeof value.type === "string";
+}
+
+function walkTypeScript(
+  node: TypeScriptNode,
+  visit: (node: TypeScriptNode, binding: boolean) => void,
+  binding = false,
+): void {
+  visit(node, binding);
+  if (node.type === TypeScriptNodeType.IMPORT_DECLARATION) return;
+  for (let [key, value] of Object.entries(node)) {
+    if (
+      [
+        "comments",
+        "tokens",
+        "loc",
+        "range",
+        "label",
+        "exported",
+        "typeAnnotation",
+        "typeArguments",
+        "typeParameters",
+        "returnType",
+      ].includes(key)
+    ) {
+      continue;
+    }
+    if (key === "key" && node.computed !== true) continue;
+    if (
+      node.type === TypeScriptNodeType.MEMBER_EXPRESSION &&
+      key === "property" &&
+      node.computed !== true
+    ) {
+      continue;
+    }
+    let childBinding =
+      key === "id" ||
+      key === "params" ||
+      key === "param" ||
+      (binding &&
+        !(
+          node.type === TypeScriptNodeType.ASSIGNMENT_PATTERN && key === "right"
+        ) &&
+        !(key === "key" && node.computed === true)) ||
+      (node.type.startsWith("TS") &&
+        !["expression", "initializer", "body", "members"].includes(key));
+    for (let child of Array.isArray(value) ? value : [value]) {
+      if (isTypeScriptNode(child)) {
+        walkTypeScript(child, visit, childBinding);
+      }
+    }
+  }
+}
+
+async function analyseTypeScript(
+  content: string,
+): Promise<TypeScriptAnalysis | null> {
+  let ast: TypeScriptNode;
+  try {
+    ast = await parsers.typescript.parse(content, {} as ParserOptions);
+  } catch {
+    return null;
+  }
+  let lines = new Set<number>();
+  let exportedEnums = new Map<string, Set<string>>();
+  let namedLodashImportLines: number[] = [];
+  let named = (value: unknown, name: CommonJsName): boolean => {
+    return (
+      isTypeScriptNode(value) &&
+      value.type === TypeScriptNodeType.IDENTIFIER &&
+      value.name === name
+    );
+  };
+  walkTypeScript(ast, (node, binding) => {
+    if (
+      !binding &&
+      node.type === TypeScriptNodeType.IDENTIFIER &&
+      [CommonJsName.DIRNAME, CommonJsName.FILENAME, CommonJsName.REQUIRE].some(
+        (name) => node.name === name,
+      )
+    ) {
+      lines.add(node.loc.start.line);
+    }
+    if (
+      node.type === TypeScriptNodeType.MEMBER_EXPRESSION &&
+      ((named(node.object, CommonJsName.MODULE) &&
+        node.computed !== true &&
+        named(node.property, CommonJsName.EXPORTS)) ||
+        named(node.object, CommonJsName.EXPORTS))
+    ) {
+      lines.add(node.loc.start.line);
+    }
+    if (
+      node.type === TypeScriptNodeType.EXPORT_NAMED_DECLARATION &&
+      isTypeScriptNode(node.declaration) &&
+      node.declaration.type === TypeScriptNodeType.TS_ENUM_DECLARATION &&
+      isTypeScriptNode(node.declaration.id) &&
+      typeof node.declaration.id.name === "string" &&
+      isTypeScriptNode(node.declaration.body) &&
+      Array.isArray(node.declaration.body.members)
+    ) {
+      let members = new Set<string>();
+      for (let member of node.declaration.body.members) {
+        if (!isTypeScriptNode(member) || !isTypeScriptNode(member.id)) continue;
+        let name = member.id.name ?? member.id.value;
+        if (typeof name === "string") members.add(name);
+      }
+      exportedEnums.set(node.declaration.id.name, members);
+    }
+    if (
+      node.type === TypeScriptNodeType.IMPORT_DECLARATION &&
+      isTypeScriptNode(node.source) &&
+      node.source.value === "lodash" &&
+      Array.isArray(node.specifiers) &&
+      node.specifiers.some(
+        (specifier) =>
+          isTypeScriptNode(specifier) &&
+          specifier.type === TypeScriptNodeType.IMPORT_SPECIFIER,
+      )
+    ) {
+      namedLodashImportLines.push(node.loc.start.line);
+    }
+  });
+  return {
+    commonJsLines: [...lines].sort((left, right) => left - right),
+    exportedEnums,
+    namedLodashImportLines,
+  };
+}
+
+function parseJsonc(content: string): JsonRecord | null {
+  try {
+    let stripped = content.replace(
+      /"(?:\\.|[^"\\])*"|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g,
+      (token) => (token.startsWith('"') ? token : " "),
+    );
+    stripped = stripped.replace(/"(?:\\.|[^"\\])*"|,\s*(?=[}\]])/g, (token) =>
+      token.startsWith('"') ? token : "",
+    );
+    let parsed: unknown = JSON.parse(stripped);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function commonJsReview(ctx: ApplyContext): Promise<string[]> {
+  let written = new Set([
+    ...ctx.report.written,
+    ...ctx.report.upgraded.map((entry) => entry.split(": ")[0]),
+  ]);
+  let hits: string[] = [];
+  let inspect = async (relPath: string): Promise<void> => {
+    if (written.has(relPath)) return;
+    let content = readFileSync(join(ctx.projectDir, relPath), "utf8");
+    let analysis = await analyseTypeScript(content);
+    if (analysis === null) hits.push(`${relPath}: parse failure`);
+    else {
+      for (let line of analysis.commonJsLines) hits.push(`${relPath}:${line}`);
+      for (let line of analysis.namedLodashImportLines) {
+        hits.push(
+          `${relPath}:${line}: ES modules need the default import (import lodash from "lodash")`,
+        );
+      }
+    }
+  };
+  let walk = async (relDir: string): Promise<void> => {
+    if (!existsSync(join(ctx.projectDir, relDir))) return;
+    for (let entry of readdirSync(join(ctx.projectDir, relDir), {
+      withFileTypes: true,
+    })) {
+      let relPath = join(relDir, entry.name);
+      if (entry.isDirectory()) await walk(relPath);
+      else if (entry.isFile() && entry.name.endsWith(".ts"))
+        await inspect(relPath);
+    }
+  };
+  await walk("apps/server/src");
+  await walk("apps/shared/lib/src");
+  for (let entry of readdirSync(join(ctx.projectDir, "apps/server"), {
+    withFileTypes: true,
+  })) {
+    if (entry.isFile() && entry.name.endsWith(".js")) {
+      await inspect(join("apps/server", entry.name));
+    }
+  }
+  return hits;
+}
+
+function migratePackageKeys(
+  relPath: PrerequisiteFile,
+  keys: PackageMigrationKey[],
+  ctx: ApplyContext,
+): void {
+  let template = JSON.parse(
+    applyReplacements(
+      readFileSync(join(ctx.templatesDir, "base", relPath), "utf8"),
+      ctx.replacements,
+    ),
+  ) as JsonRecord;
+  let path = join(ctx.projectDir, relPath);
+  let target = JSON.parse(readFileSync(path, "utf8")) as JsonRecord;
+  let published: JsonRecord[] = [];
+  let legacyDir = join(ctx.templatesDir, "legacy");
+  for (let entry of readdirSync(legacyDir, { withFileTypes: true })) {
+    let snapshot = join(legacyDir, entry.name, "base", relPath);
+    if (!entry.isDirectory() || !existsSync(snapshot)) continue;
+    published.push(
+      JSON.parse(
+        applyReplacements(readFileSync(snapshot, "utf8"), ctx.replacements),
+      ) as JsonRecord,
+    );
+  }
+  let valueAt = (pkg: JsonRecord, parts: string[]): unknown => {
+    let value: unknown = pkg;
+    for (let part of parts) {
+      if (!isPlainObject(value)) return undefined;
+      value = value[part];
+    }
+    return value;
+  };
+  let changed = false;
+  for (let key of keys) {
+    let parts = key.split(".");
+    let current = valueAt(target, parts);
+    let incoming = valueAt(template, parts);
+    if (isDeepStrictEqual(current, incoming)) continue;
+    if (
+      !published.some((pkg) => isDeepStrictEqual(valueAt(pkg, parts), current))
+    ) {
+      ctx.report.mergeBeforeRelease.push(
+        `${relPath}: ${key} kept as ${JSON.stringify(current) ?? "absent"} (expected ${JSON.stringify(incoming) ?? "absent"})`,
+      );
+      continue;
+    }
+    let parent = target;
+    for (let part of parts.slice(0, -1)) {
+      if (!isPlainObject(parent[part])) parent[part] = {};
+      parent = parent[part] as JsonRecord;
+    }
+    let last = parts.at(-1)!;
+    if (incoming === undefined) delete parent[last];
+    else if (key === PackageMigrationKey.TYPE && current === undefined) {
+      let templateKeys = Object.keys(template);
+      let preceding = templateKeys
+        .slice(0, templateKeys.indexOf(key))
+        .reverse();
+      let anchor = preceding.find((name) => Object.hasOwn(target, name));
+      let ordered: JsonRecord = {};
+      if (anchor === undefined) ordered[key] = incoming;
+      for (let [name, value] of Object.entries(target)) {
+        ordered[name] = value;
+        if (name === anchor) ordered[key] = incoming;
+      }
+      target = ordered;
+    } else parent[last] = incoming;
+    changed = true;
+    ctx.report.upgraded.push(`${relPath}: ${key}`);
+  }
+  if (changed) writeFileSync(path, JSON.stringify(target, null, 4) + "\n");
+}
+
+async function upgradeEsmPrerequisites(ctx: ApplyContext): Promise<void> {
+  let prerequisites: [
+    string,
+    PrerequisiteFile,
+    ((content: string) => boolean | Promise<boolean>)?,
+  ][] = [
+    ["base", PrerequisiteFile.SHARED_VALUES_WIRE_TS],
+    [`db/${ctx.selections.database}`, PrerequisiteFile.SERVER_UTILS_ENV_TS],
+    [
+      "base",
+      PrerequisiteFile.SERVER_CLI_ERROR_CODE_TS,
+      async (content) => {
+        let analysis = await analyseTypeScript(content);
+        return (
+          analysis?.exportedEnums
+            .get(EsmEnumName.CLI_ERROR_CODE)
+            ?.has(CliErrorCodeMember.DUPLICATED_COMMAND) === true
+        );
+      },
+    ],
+    [
+      "base",
+      PrerequisiteFile.SERVER_APP_SWAGGER_TS,
+      async (content) => {
+        let analysis = await analyseTypeScript(content);
+        return (
+          analysis?.exportedEnums.has(EsmEnumName.SWAGGER_SECURITY_TYPE) ===
+            true && analysis.namedLodashImportLines.length === 0
+        );
+      },
+    ],
+    ...[
+      PrerequisiteFile.SERVER_APP_HTTP_SERVER_TS,
+      PrerequisiteFile.SERVER_BACKEND_TS,
+      PrerequisiteFile.SERVER_CLI_TS,
+    ].map(
+      (
+        path,
+      ): [string, PrerequisiteFile, (content: string) => Promise<boolean>] => [
+        "base",
+        path,
+        async (content) => {
+          let analysis = await analyseTypeScript(content);
+          return analysis !== null && analysis.commonJsLines.length === 0;
+        },
+      ],
+    ),
+    [
+      "base",
+      PrerequisiteFile.SERVER_TSCONFIG_JSON,
+      (content) => {
+        let config = parseJsonc(content);
+        let options = config?.compilerOptions;
+        return (
+          isPlainObject(options) &&
+          typeof options.moduleResolution === "string" &&
+          options.moduleResolution.toLowerCase() === ModuleResolution.BUNDLER &&
+          options.noEmit === true
+        );
+      },
+    ],
+    [
+      "base",
+      PrerequisiteFile.SERVER_TSCONFIG_BUILD_JSON,
+      (content) => {
+        let config = parseJsonc(content);
+        return config !== null && !Object.hasOwn(config, "references");
+      },
+    ],
+    ["base", PrerequisiteFile.SERVER_ROLLDOWN_CONFIG_TS, () => true],
+    [
+      "base",
+      PrerequisiteFile.SHARED_TSCONFIG_JSON,
+      (content) => {
+        let config = parseJsonc(content);
+        let options = config?.compilerOptions;
+        return (
+          isPlainObject(options) &&
+          typeof options.moduleResolution === "string" &&
+          options.moduleResolution.toLowerCase() === ModuleResolution.BUNDLER &&
+          (!Object.hasOwn(options, "composite") || options.composite === false)
+        );
+      },
+    ],
+  ];
+  for (let [fragment, relPath, satisfied] of prerequisites) {
+    await upgradePrerequisite(
+      fragment,
+      relPath,
+      "support the ES module server build",
+      ctx,
+      false,
+      satisfied,
+    );
+  }
+  migratePackageKeys(
+    PrerequisiteFile.SERVER_PACKAGE_JSON,
+    [
+      PackageMigrationKey.TYPE,
+      PackageMigrationKey.BUILD,
+      PackageMigrationKey.TYPE_CHECK,
+      PackageMigrationKey.BUILD_CLEAN,
+      PackageMigrationKey.BUILD_WATCH,
+      PackageMigrationKey.ROLLDOWN,
+    ],
+    ctx,
+  );
+  migratePackageKeys(
+    PrerequisiteFile.SHARED_PACKAGE_JSON,
+    [
+      PackageMigrationKey.TYPE,
+      PackageMigrationKey.EXPORTS,
+      PackageMigrationKey.BUILD,
+      PackageMigrationKey.BUILD_WATCH,
+      PackageMigrationKey.TYPE_CHECK,
+    ],
+    ctx,
+  );
 }
 
 async function upgradeReleasePrerequisites(
@@ -1139,6 +1602,16 @@ export async function runAdd(options: AddOptions): Promise<void> {
 
   const s = spinner();
   s.start(`${options.refresh ? "Refreshing" : "Adding"} ${axes.join(" + ")}`);
+  let serverPackagePath = join(
+    options.projectDir,
+    PrerequisiteFile.SERVER_PACKAGE_JSON,
+  );
+  let migrating =
+    fragments.includes("server/workers") &&
+    existsSync(serverPackagePath) &&
+    JSON.parse(readFileSync(serverPackagePath, "utf8")).type !==
+      PackageModuleType.MODULE;
+  if (migrating) await upgradeEsmPrerequisites(ctx);
   if (ciFeature) {
     if (!options.refresh) await upgradeReleasePrerequisites(after, ctx);
   } else if (fragments.includes("server/redis")) {
@@ -1163,6 +1636,7 @@ export async function runAdd(options: AddOptions): Promise<void> {
   for (const fragment of fragments) {
     await walkFragment(join(templatesDir, fragment), "", ctx);
   }
+  let commonJsHits = migrating ? await commonJsReview(ctx) : [];
 
   if (!options.refresh) {
     updateGeneratedFile(
@@ -1231,13 +1705,13 @@ export async function runAdd(options: AddOptions): Promise<void> {
   }
   if (report.upgraded.length > 0) {
     log.success(
-      `Upgraded ${ciFeature ? "release " : ""}prerequisites:\n${report.upgraded.map((f) => `  ${f}`).join("\n")}`,
+      `Upgraded ${ciFeature && !migrating ? "release " : ""}prerequisites:\n${report.upgraded.map((f) => `  ${f}`).join("\n")}`,
     );
   }
   if (report.mergeBeforeRelease.length > 0) {
     note(
       report.mergeBeforeRelease.join("\n"),
-      ciFeature
+      ciFeature && !migrating
         ? "Merge before your first gate run or release"
         : "Merge before building",
     );
@@ -1256,6 +1730,11 @@ export async function runAdd(options: AddOptions): Promise<void> {
   if (report.conflicts.length > 0) {
     log.warn(
       `Local edits detected — review the .new files:\n${report.conflicts.map((f) => `  ${f}`).join("\n")}`,
+    );
+  }
+  if (commonJsHits.length > 0) {
+    log.warn(
+      `CommonJS review: ES modules use import.meta.dirname, import.meta.filename, await import() and export. Review these files before building:\n${commonJsHits.map((hit) => `  ${hit}`).join("\n")}`,
     );
   }
   if (stackBlockForManualPaste) {
@@ -1277,6 +1756,7 @@ export async function runAdd(options: AddOptions): Promise<void> {
   const steps = [
     "git diff — review what changed",
     ...(options.install ? [] : ["npm install"]),
+    ...(migrating ? ["npm run type-check"] : []),
     "make dev",
     ...(axes.includes(AddFeature.WEBSOCKETS)
       ? ["mount <WebSocketProvider> in the app shell (see README)"]

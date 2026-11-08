@@ -4,6 +4,7 @@ import { $logger } from "./utils/logger";
 import yargs from "yargs";
 import { CliCommand } from "./app/cli-command";
 import { resolve } from "path";
+import { pathToFileURL } from "node:url";
 import { execute } from "@pimasi/utils/lib/helpers";
 import { InternalError } from "@pimasi/utils/lib/error";
 import { globSync } from "fs";
@@ -13,13 +14,15 @@ execute(async () => {
     let cli = yargs(process.argv.slice(2));
     let _handler: Promise<any> | undefined = undefined;
 
-    let fileNames = await globSync(resolve(__dirname, "./**/*.cli.{ts,js}"));
+    let fileNames = await globSync(
+        resolve(import.meta.dirname, "./**/*.cli.{ts,js}"),
+    );
 
     let commands: Record<string, CliCommand> = {};
 
     for (let file of fileNames) {
         try {
-            let module = require(file);
+            let module = await import(pathToFileURL(file).href);
 
             Object.entries(module).forEach(([name, module]) => {
                 if (CliCommand.isCommand(module)) {

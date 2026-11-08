@@ -1,15 +1,13 @@
 {
     "compilerOptions": {
-        "moduleResolution": "nodenext",
+        "moduleResolution": "bundler",
         "esModuleInterop": true,
         "noImplicitAny": false,
-        "module": "nodenext",
+        "module": "esnext",
         "skipLibCheck": true,
-        "incremental": true,
-        "composite": true,
-        "rootDir": "src",
-        "target": "esnext",
-        "outDir": "dist",
+        "target": "es2025",
+        "noEmit": true,
+        "isolatedModules": true,
         "pretty": true,
         "strict": true
     },

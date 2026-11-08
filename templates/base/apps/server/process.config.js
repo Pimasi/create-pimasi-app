@@ -12,7 +12,7 @@ const LOG_CONFIG = {
 // (`node --watch-path=./src --import tsx`). Node owns the watch + restart, so
 // PM2's restart path is never touched. `--watch-path=./src` is a recursive
 // *directory* watch (not the module graph): routes are autoloaded via
-// globSync+require, so a brand-new *.route.ts must trigger a reload even
+// globSync+import(), so a brand-new *.route.ts must trigger a reload even
 // though nothing imports it yet. (Plain `tsx watch` only watches its module
 // graph and would silently miss new autoloaded files; that's why we use
 // Node's watcher with tsx as the loader.) `tsc-watch` stays purely for
@@ -35,14 +35,12 @@ const prodApp = (name, script) => ({
     ...LOG_CONFIG,
 });
 
-module.exports = {
-    apps: [
-        DEV_MODE && {
-            name: "tsc-watch",
-            script: "npm",
-            args: ["run", "build:watch"],
-            ...LOG_CONFIG,
-        },
-        DEV_MODE ? devApp("backend") : prodApp("backend", "dist/backend.js"),
-    ].filter(Boolean),
-};
+export const apps = [
+    DEV_MODE && {
+        name: "tsc-watch",
+        script: "npm",
+        args: ["run", "build:watch"],
+        ...LOG_CONFIG,
+    },
+    DEV_MODE ? devApp("backend") : prodApp("backend", "dist/backend.js"),
+].filter(Boolean);

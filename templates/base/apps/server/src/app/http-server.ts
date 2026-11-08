@@ -3,6 +3,7 @@ import { Route } from "./route";
 import { $logger } from "../utils/logger";
 import { createSwaggerDocs, SwaggerConfig } from "./swagger";
 import { globSync } from "fs";
+import { pathToFileURL } from "node:url";
 
 declare global {
     namespace Express {
@@ -95,13 +96,13 @@ export async function AppServer({
     return app;
 }
 
-function autoLoadRoutes(routesPath: string) {
+async function autoLoadRoutes(routesPath: string) {
     let fileNames = globSync(routesPath);
 
     let routes: Route[] = [];
-    fileNames.forEach((fileName) => {
+    for (let fileName of fileNames) {
         try {
-            let route = require(fileName);
+            let route = await import(pathToFileURL(fileName).href);
 
             Object.entries(route).forEach(([name, route]) => {
                 if (Route.isRoute(route)) {
@@ -111,7 +112,7 @@ function autoLoadRoutes(routesPath: string) {
         } catch (err: any) {
             $logger.warn({ fileName, err }, `Failed to load route file`);
         }
-    });
+    }
 
     return routes;
 }

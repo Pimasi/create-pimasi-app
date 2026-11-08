@@ -1,11 +1,6 @@
 {
-    "references": [
-        {
-            "path": "../shared/lib"
-        }
-    ],
     "compilerOptions": {
-        "moduleResolution": "nodenext",
+        "moduleResolution": "bundler",
         "resolveJsonModule": true,
         "types": ["node"], // TS 6.0 changed the `types` default to [] (was: all @types/*)
         "paths": {
@@ -15,17 +10,12 @@
         "preserveSymlinks": true,
         "isolatedModules": true,
         "esModuleInterop": true,
-        "removeComments": false,
-        "declarationMap": true,
         "noImplicitAny": false,
-        "module": "nodenext",
+        "module": "esnext",
         "skipLibCheck": true,
-        "incremental": true,
-        "declaration": true,
-        "composite": true, // needed for monorepo references
-        "target": "esnext",
-        "sourceMap": true,
-        "outDir": "dist",
+        "target": "es2025",
+        "lib": ["es2025", "ESNext.Collection", "ESNext.Temporal"],
+        "noEmit": true,
         "pretty": true,
         "strict": true
     },

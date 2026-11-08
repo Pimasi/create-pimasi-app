@@ -59,7 +59,7 @@ Commit `package-lock.json` after setup and dependency changes. The Dockerfiles u
 
 - The monorepo uses **npm workspaces + Turborepo** for task orchestration; `make` targets wrap the day-to-day commands.
 - **Builds and tests run through Docker/make**: `make dev` builds the images, `make test` runs the suite inside the server container.
-- The server image transpiles `apps/shared/lib/` and `apps/server/` in one TypeScript project-reference build.
+- The server image uses tsc to type-check and rolldown to compile the server and shared lib into `apps/server/dist/`. Production runs that JavaScript with plain Node under PM2; development and `run` use tsx on the source.
 - The **host-side exceptions** are `npm run type-check` (`make type-check`) and prettier (`make format`): purely static, they need **no** running containers, database, or Redis.
 
 ```sh

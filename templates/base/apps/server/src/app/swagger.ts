@@ -1,5 +1,5 @@
 import { JsonSchema } from "@pimasi/utils/lib/json-schema";
-import { sortBy } from "lodash";
+import lodash from "lodash";
 import { Route } from "./route";
 import { NotImplemented } from "@pimasi/utils/lib/error";
 
@@ -52,7 +52,7 @@ export function createSwaggerDocs({
               : undefined;
 
     function toSwaggerPaths(routes: Route[]) {
-        return sortBy(routes, "route").reduce(
+        return lodash.sortBy(routes, "route").reduce(
             (carry, route) => {
                 if (!route.docs?.disabled) {
                     let path = route.route
