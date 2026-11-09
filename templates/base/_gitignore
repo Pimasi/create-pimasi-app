@@ -36,6 +36,6 @@ apps/web/cordova/platforms/
 apps/web/cordova/plugins/
 
 # agent scratch space (plans, notes)
-.scratch/
+.tmp/
 
 .playwright-mcp

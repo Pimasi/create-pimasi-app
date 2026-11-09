@@ -44,7 +44,7 @@ reviewing it itself. Where the user's or the project's own rules name a
 reviewer, those rules decide. An agent that can start neither runs every pass
 itself in its current context and says so in the report.
 
-The hand-off prompt and the verdict live under the gitignored `.scratch/`
+The hand-off prompt and the verdict live under the gitignored `.tmp/`
 folder and are never committed.
 
 The fresh reviewer has none of the originating conversation's context, so

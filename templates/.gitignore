@@ -4,7 +4,7 @@ dist/
 .turbo/
 .dumps/
 .vscode/
-.scratch/
+.tmp/
 .playwright-mcp
 .env
 .env.cordova

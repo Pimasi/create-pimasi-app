@@ -39,9 +39,9 @@ Prefer: "I'm about to do X — or did you mean Y?" over guessing and explaining 
 - Do not delete or reword a human's existing comment as an incidental side effect of an unrelated edit — that context is theirs, not yours to tidy.
 - **Functional / directive comments are exempt** — they are machine instructions, not prose: `// @ts-expect-error`, `// @ts-ignore`, `// eslint-disable*`, `// prettier-ignore`, `#!` shebangs, and similar pragmas stay, and you still add them when they are functionally required.
 
-## No plan mode — plans live in `.scratch/`
+## No plan mode — plans live in `.tmp/`
 
-**Do not use your tool's plan mode.** When a task needs a plan, write it as a markdown file under the gitignored `.scratch/` folder at the repo root, then validate it with the user before implementing. A plan file can be read, edited, and re-reviewed by anyone at any point; plan mode traps the same content inside one tool's session.
+**Do not use your tool's plan mode.** When a task needs a plan, write it as a markdown file under the gitignored `.tmp/` folder at the repo root, then validate it with the user before implementing. A plan file can be read, edited, and re-reviewed by anyone at any point; plan mode traps the same content inside one tool's session.
 
 ## Generated content follows the timestamp convention
 
